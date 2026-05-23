@@ -68,6 +68,14 @@ function describeTtsFailure(tts) {
   return `ElevenLabs TTS failed: ${tts.status}.${detail}`;
 }
 
+function describeSttFailure(payload) {
+  if (!payload) {
+    return "No STT response returned.";
+  }
+  const detail = payload.stt_detail ? ` ${payload.stt_detail}` : "";
+  return `ElevenLabs STT failed: ${payload.stt_status || "unknown"}.${detail}`;
+}
+
 function updateManualEntry(nextState = "") {
   const editableStates = new Set(["collect_name", "confirm_name", "collect_gender", "collect_age", "collect_phone", "review_booking"]);
   els.textInput.hidden = !editableStates.has(nextState);
@@ -395,6 +403,14 @@ function chooseVoice() {
   );
 }
 
+function handleAssistantAudioFailure(message, afterSpeak = resumeListening) {
+  setStatus("Voice setup issue", "error");
+  els.recordHint.textContent = message;
+  showUnlockHint(true);
+  state.speaking = false;
+  afterSpeak();
+}
+
 function speakAssistant(text, afterSpeak = resumeListening, options = {}) {
   const { addTranscript = true, skipBackendAudio = false } = options;
   els.assistantLine.textContent = text;
@@ -410,16 +426,14 @@ function speakAssistant(text, afterSpeak = resumeListening, options = {}) {
           return;
         }
         setStatus("TTS failed", "error");
-        els.recordHint.textContent = describeTtsFailure(tts);
-        showUnlockHint(true);
-        speakAssistant(text, afterSpeak, { addTranscript: false, skipBackendAudio: true });
+        handleAssistantAudioFailure(describeTtsFailure(tts), afterSpeak);
       })
       .catch((error) => {
         console.error(error);
-        setStatus("TTS failed", "error");
-        els.recordHint.textContent = `Could not reach backend TTS. ${error.message || "Check ElevenLabs settings and server logs."}`;
-        showUnlockHint(true);
-        speakAssistant(text, afterSpeak, { addTranscript: false, skipBackendAudio: true });
+        handleAssistantAudioFailure(
+          `Could not reach backend TTS. ${error.message || "Check ElevenLabs settings and server logs."}`,
+          afterSpeak,
+        );
       });
     return;
   }
@@ -466,10 +480,7 @@ function speakAssistant(text, afterSpeak = resumeListening, options = {}) {
 function playBackendAudio(tts, fallbackText, afterSpeak = resumeListening, options = {}) {
   const { addTranscript = true } = options;
   if (!tts || !tts.audio_url || tts.status !== "synthesized") {
-    setStatus("TTS failed", "error");
-    els.recordHint.textContent = describeTtsFailure(tts);
-    showUnlockHint(true);
-    speakAssistant(fallbackText, afterSpeak, { addTranscript: false, skipBackendAudio: true });
+    handleAssistantAudioFailure(describeTtsFailure(tts), afterSpeak);
     return;
   }
 
@@ -491,17 +502,11 @@ function playBackendAudio(tts, fallbackText, afterSpeak = resumeListening, optio
   };
   audio.onerror = () => {
     state.speaking = false;
-    setStatus("Audio blocked", "error");
-    els.recordHint.textContent = "Backend audio was generated but could not play. Click once and try again.";
-    showUnlockHint(true);
-    speakAssistant(fallbackText, afterSpeak, { addTranscript: false, skipBackendAudio: true });
+    handleAssistantAudioFailure("Backend audio was generated but could not play. Click once and try again.", afterSpeak);
   };
   audio.play().catch(() => {
     state.speaking = false;
-    setStatus("Audio blocked", "error");
-    els.recordHint.textContent = "Browser blocked audio playback. Click once and try again.";
-    showUnlockHint(true);
-    speakAssistant(fallbackText, afterSpeak, { addTranscript: false, skipBackendAudio: true });
+    handleAssistantAudioFailure("Browser blocked audio playback. Click once and try again.", afterSpeak);
   });
 }
 
@@ -520,7 +525,12 @@ function applyVoiceTurn(payload) {
 
   const chat = payload.chat;
   if (!chat) {
-    speakAssistant("I could not hear that clearly. Please say it again.");
+    const detail = describeSttFailure(payload);
+    els.recordHint.textContent = detail;
+    const retryLine = payload.stt_status === "no_speech_detected"
+      ? "I could not hear that clearly. Please say it again."
+      : "The speech service could not process that audio. Please check the voice configuration.";
+    speakAssistant(retryLine);
     return;
   }
 
@@ -637,7 +647,8 @@ async function sendVoiceTurn(blob, mimeType) {
       sendTextToBackend(fallbackText, { alreadyCommitted: true });
       return;
     }
-    speakAssistant("I could not process that audio. Please try again.");
+    els.recordHint.textContent = error.message || "Voice turn request failed.";
+    speakAssistant("I could not process that audio. Please check microphone access and the voice service settings.");
   }
 }
 

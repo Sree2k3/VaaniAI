@@ -25,7 +25,7 @@ class Settings(BaseSettings):
     generated_audio_dir: str = "generated_audio"
     elevenlabs_api_key: str | None = None
     elevenlabs_voice_id: str | None = None
-    elevenlabs_fallback_voice_id: str = "EXAVITQu4vr4xnSDxMaL"
+    elevenlabs_fallback_voice_id: str | None = None
     elevenlabs_stt_model: str = "scribe_v2"
     elevenlabs_tts_model: str = "eleven_multilingual_v2"
     elevenlabs_sts_model: str = "eleven_multilingual_sts_v2"

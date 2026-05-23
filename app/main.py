@@ -8,7 +8,7 @@ from sqlmodel import Session, text
 
 from app.audio import stt_service, sts_service, tts_service
 from app.config import get_settings
-from app.database import get_session, init_db
+from app.database import engine, get_session, init_db
 from app.models import Doctor
 from app.schemas import (
     BookingRequest,
@@ -52,6 +52,9 @@ from app.services import (
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     init_db()
+    if get_settings().demo_mode:
+        with Session(engine) as session:
+            seed_demo_data(session)
     yield
 
 
@@ -83,6 +86,33 @@ def web_app() -> FileResponse:
 def health(session: Session = Depends(get_session)) -> HealthResponse:
     session.exec(text("SELECT 1"))
     return HealthResponse(status="ok", database="ok")
+
+
+@app.get("/diagnostics/config")
+def diagnostics_config() -> dict[str, object]:
+    runtime_settings = get_settings()
+    generated_audio_dir = Path(runtime_settings.generated_audio_dir)
+    return {
+        "app": runtime_settings.app_name,
+        "demo_mode": runtime_settings.demo_mode,
+        "database": "configured" if runtime_settings.database_url else "missing",
+        "public_base_url": runtime_settings.public_base_url,
+        "stt_provider": runtime_settings.stt_provider,
+        "stt_ready": runtime_settings.stt_provider.lower() != "elevenlabs" or bool(runtime_settings.elevenlabs_api_key),
+        "tts_provider": runtime_settings.tts_provider,
+        "tts_ready": (
+            runtime_settings.tts_provider.lower() != "elevenlabs"
+            or bool(runtime_settings.elevenlabs_api_key and runtime_settings.elevenlabs_voice_id)
+        ),
+        "elevenlabs_api_key_set": bool(runtime_settings.elevenlabs_api_key),
+        "elevenlabs_voice_id_set": bool(runtime_settings.elevenlabs_voice_id),
+        "llm_provider": runtime_settings.llm_provider,
+        "openrouter_key_set": bool(runtime_settings.openrouter_api_key),
+        "sms_provider": runtime_settings.sms_provider,
+        "fast2sms_key_set": bool(runtime_settings.fast2sms_api_key),
+        "calendar_provider": runtime_settings.calendar_provider,
+        "generated_audio_dir": str(generated_audio_dir),
+    }
 
 
 @app.post("/demo/seed")
