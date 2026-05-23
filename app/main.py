@@ -1,5 +1,4 @@
 from contextlib import asynccontextmanager
-import logging
 from pathlib import Path
 
 from fastapi import Depends, FastAPI, File, HTTPException, UploadFile
@@ -48,9 +47,6 @@ from app.services import (
     send_booking_confirmation,
     start_or_resume_session,
 )
-
-
-logger = logging.getLogger("vaaniai")
 
 
 @asynccontextmanager
@@ -263,6 +259,10 @@ def text_to_speech(
     if not request.text.strip():
         raise HTTPException(status_code=400, detail="text is required")
     result = tts_service.synthesize(request.text, request.language)
+    print(
+        f"tts status={result.status} audio={bool(result.audio_url)} detail={result.detail[:160]}",
+        flush=True,
+    )
     return TTSResponse(audio_url=result.audio_url, status=result.status, detail=result.detail)
 
 
@@ -307,14 +307,16 @@ async def voice_turn(
                 detail=tts_result.detail,
             )
 
-    logger.info(
-        "voice_turn call_id=%s stt_status=%s stt_language=%s text_present=%s chat_state=%s tts_status=%s",
-        call_id,
-        stt_result.status,
-        transcript_language,
-        bool(stt_result.text),
-        getattr(chat_response, "next_state", None),
-        tts_response.status if tts_response else None,
+    print(
+        "voice_turn "
+        f"call_id={call_id} "
+        f"stt_status={stt_result.status} "
+        f"stt_language={transcript_language} "
+        f"text_present={bool(stt_result.text)} "
+        f"chat_state={getattr(chat_response, 'next_state', None)} "
+        f"tts_status={tts_response.status if tts_response else None} "
+        f"stt_detail={stt_result.detail[:160]}",
+        flush=True,
     )
 
     return VoiceTurnResponse(
