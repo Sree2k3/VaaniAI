@@ -46,9 +46,10 @@ const els = {
 };
 
 const greeting = "Hello, I am Vaani from Pawani Medicals. How may I help you today? Please tell me your symptoms or the specialist you would like to see.";
-const voiceThreshold = 0.035;
-const silenceMs = 1150;
-const minRecordingMs = 650;
+const voiceThreshold = 0.055;
+const silenceMs = 1400;
+const minRecordingMs = 900;
+const minAudioBytes = 1800;
 
 function setStatus(label, tone = "") {
   els.connectionStatus.textContent = label;
@@ -527,10 +528,14 @@ function applyVoiceTurn(payload) {
   if (!chat) {
     const detail = describeSttFailure(payload);
     els.recordHint.textContent = detail;
-    const retryLine = payload.stt_status === "no_speech_detected"
-      ? "I could not hear that clearly. Please say it again."
-      : "The speech service could not process that audio. Please check the voice configuration.";
-    speakAssistant(retryLine);
+    if (payload.stt_status === "no_speech_detected") {
+      clearPendingTurn();
+      setStatus("Listening");
+      els.recordHint.textContent = "Listening automatically";
+      window.setTimeout(resumeListening, 400);
+      return;
+    }
+    speakAssistant("The speech service could not process that audio. Please check the voice configuration.");
     return;
   }
 
@@ -607,6 +612,11 @@ function stopRecorder() {
 
 async function sendVoiceTurn(blob, mimeType) {
   if (!blob.size) {
+    resumeListening();
+    return;
+  }
+  if (blob.size < minAudioBytes) {
+    clearPendingTurn();
     resumeListening();
     return;
   }

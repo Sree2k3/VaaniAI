@@ -1,4 +1,5 @@
 from contextlib import asynccontextmanager
+import logging
 from pathlib import Path
 
 from fastapi import Depends, FastAPI, File, HTTPException, UploadFile
@@ -47,6 +48,9 @@ from app.services import (
     send_booking_confirmation,
     start_or_resume_session,
 )
+
+
+logger = logging.getLogger("vaaniai")
 
 
 @asynccontextmanager
@@ -302,6 +306,16 @@ async def voice_turn(
                 status=tts_result.status,
                 detail=tts_result.detail,
             )
+
+    logger.info(
+        "voice_turn call_id=%s stt_status=%s stt_language=%s text_present=%s chat_state=%s tts_status=%s",
+        call_id,
+        stt_result.status,
+        transcript_language,
+        bool(stt_result.text),
+        getattr(chat_response, "next_state", None),
+        tts_response.status if tts_response else None,
+    )
 
     return VoiceTurnResponse(
         call_id=call_id,
