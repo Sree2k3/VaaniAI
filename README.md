@@ -1,132 +1,228 @@
-# VaaniAI Backend
+# VaaniAI
 
-VaaniAI is a multilingual AI healthcare receptionist MVP. This backend now targets a web-interactive voice agent flow (not telephony-first): audio upload -> STT -> conversation engine -> optional TTS -> booking + SMS confirmation.
+VaaniAI is a multilingual AI healthcare receptionist MVP. It runs as a web-based voice agent that listens to a patient, understands symptoms or requested specialties, shows matching doctors and appointment slots, collects patient details, confirms the booking on screen, and sends an SMS confirmation after the appointment is created.
 
-## MVP Status
+The current version is built for a browser experience instead of telephone routing. A patient opens the web app, Vaani greets them, the microphone starts automatically, and the backend handles the complete appointment workflow.
 
-Backend completion for the agreed demo MVP is approximately 98-99%.
+## What It Does
 
-Completed backend:
+- Speaks to patients through a browser-based voice interface.
+- Accepts English, Hindi, and Hinglish-style patient input.
+- Understands either symptoms such as "chest pain" or direct specialties such as "cardiologist".
+- Shows available doctor and slot options on screen.
+- Keeps slot options visible until a slot is selected.
+- Shows the selected doctor and appointment time after slot selection.
+- Collects patient name, gender, age, and phone number.
+- Shows a final booking review before confirming.
+- Books the appointment only after confirmation.
+- Sends the final booking SMS through Fast2SMS.
+- Optionally creates a Google Calendar event for the booked slot.
+- Stores appointments, transcripts, notifications, sessions, doctors, and slots in the database.
 
-- Browser voice-agent backend flow using `/voice/turn`
-- Text fallback using `/chat`
-- ElevenLabs STT provider support
-- ElevenLabs TTS provider support
-- Optional ElevenLabs speech-to-speech endpoint support
-- Legacy Groq STT provider support remains available
-- OpenRouter LLM fallback/inquiry support
-- Optional OpenRouter voice-agent reply polishing for smoother receptionist transitions
-- Fast2SMS booking confirmation support
-- Doctor/specialization discovery
-- Slot selection and slot locking
-- Patient intake: name, gender, age, phone
-- On-screen booking review payload
-- Confirm-before-booking flow
-- Appointment, transcript, notification, dashboard, and session APIs
-- Optional Google Calendar appointment sync
-- SQLite/MySQL-compatible startup schema migration
-- Demo-safe API key option, simple local rate limiting, and audio upload validation
-- Static frontend served from `/app`
-- Premium voice-agent UI served from `/app`
-- Automated tests passing: `pytest -q` -> 45 passed
+## Outcome
 
-Remaining for demo MVP:
+At the end of a successful flow:
 
-- Live provider testing with real ElevenLabs, OpenRouter, and Fast2SMS keys
-- Deployment/hosting configuration when a public demo link is needed
-- MCP-based hosting/integration layer, if the final deployment path requires it
+1. The patient has selected a doctor and slot.
+2. The patient has reviewed and confirmed their details.
+3. The appointment is saved in the database.
+4. The slot is locked so it cannot be reused.
+5. The patient receives an SMS confirmation.
+6. The UI shows a success state and then resets for a new session.
+7. If enabled, the appointment is also added to Google Calendar.
 
-Not required for this demo MVP:
+## Architecture
 
-- Production-grade authentication
-- Persistent/distributed rate limiting
-- Telephony/call routing
+```text
+Patient Browser
+     |
+     | microphone audio
+     v
+FastAPI /voice/turn
+     |
+     | audio bytes
+     v
+ElevenLabs STT
+     |
+     | transcribed text
+     v
+Conversation Engine
+     |
+     | symptom/specialty detection
+     | slot matching
+     | patient detail collection
+     | booking review
+     v
+Database
+     |
+     | confirmed booking
+     +---------------------> Fast2SMS confirmation
+     |
+     +---------------------> optional Google Calendar event
+     |
+     | assistant reply
+     v
+ElevenLabs TTS
+     |
+     | generated audio URL
+     v
+Patient Browser UI
+```
 
-## Run locally
+OpenRouter is used for conversational fallback and optional voice-agent reply polishing. The core booking decisions, slot validation, patient detail collection, and confirmation logic remain inside the backend state machine.
+
+## Tech Stack
+
+- Backend: FastAPI
+- Database layer: SQLModel and SQLAlchemy
+- Local database: SQLite
+- Hosted database option: MySQL or another SQLAlchemy-compatible database
+- Frontend: static HTML, CSS, and JavaScript served by FastAPI
+- STT: ElevenLabs
+- TTS: ElevenLabs
+- LLM: OpenRouter
+- SMS: Fast2SMS
+- Optional calendar sync: Google Calendar API
+- Tests: pytest
+
+## Project Structure
+
+```text
+app/
+  audio.py          ElevenLabs, Groq, Faster-Whisper, and TTS wrappers
+  calendar.py       Optional Google Calendar sync
+  config.py         Environment configuration
+  database.py       Database engine and startup migrations
+  intent.py         Intent, symptom, detail, phone, age, and slot parsing
+  llm.py            OpenRouter integration
+  main.py           FastAPI routes
+  messaging.py      Fast2SMS and Twilio SMS wrappers
+  models.py         SQLModel database models
+  schemas.py        API request and response schemas
+  security.py       API key, rate limit, and upload validation helpers
+  services.py       Booking, session, dashboard, transcript, and state-machine logic
+
+frontend/
+  index.html        Web voice-agent screen
+  styles.css        Premium black UI styling
+  app.js            Browser microphone loop and UI state handling
+
+scripts/
+  seed_demo_data.py Demo doctors, symptoms, and slots
+
+tests/
+  test_api.py
+  test_audio.py
+  test_chat_flow.py
+  test_intent.py
+  test_messaging.py
+```
+
+## Main User Flow
+
+```text
+1. User opens /app
+2. Vaani greets the user
+3. Browser records speech automatically
+4. Frontend sends audio to /voice/turn
+5. Backend transcribes audio with ElevenLabs STT
+6. Backend detects symptom or requested specialization
+7. Backend returns matching doctor/slot options
+8. User chooses a slot
+9. Backend collects name, gender, age, and phone
+10. Frontend shows booking review
+11. User confirms
+12. Backend creates appointment and locks slot
+13. Fast2SMS sends confirmation SMS
+14. Optional Google Calendar event is created
+15. UI shows booking success and resets for a fresh session
+```
+
+## API Overview
+
+Core app:
+
+- `GET /` - service metadata
+- `GET /health` - health and database check
+- `GET /app` - browser voice-agent UI
+
+Demo and data:
+
+- `POST /demo/seed` - seed demo doctors and slots
+- `POST /demo/reset-bookings` - clear test appointments and unlock slots
+- `GET /doctors` - list doctors and symptoms
+- `GET /available-slots` - list available slots, optionally by specialization
+
+Conversation:
+
+- `POST /session/start` - start a fresh web session
+- `GET /session/{call_id}` - read current session state
+- `POST /session/{call_id}/reset` - reset one session
+- `POST /chat` - text-based conversation fallback
+- `POST /voice/turn` - full voice turn: STT, chat, and optional TTS
+
+Audio:
+
+- `POST /transcribe` - transcribe uploaded audio
+- `POST /tts` - generate speech for assistant text
+- `POST /speech-to-speech` - optional ElevenLabs speech-to-speech conversion
+
+Booking and operations:
+
+- `POST /book-appointment` - direct booking endpoint
+- `GET /dashboard/metrics` - booking and operational metrics
+- `GET /dashboard/recent-bookings` - recent appointments
+- `GET /transcripts` - stored conversation transcripts
+- `GET /notifications` - SMS notification audit log
+
+## Environment Setup
+
+Create a local environment:
 
 ```powershell
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 pip install -r requirements.txt
-python scripts\seed_demo_data.py
-uvicorn app.main:app --reload
 ```
 
-Open `http://127.0.0.1:8000/docs` for API testing.
-Open `http://127.0.0.1:8000/app` for the web voice UI.
+Copy the sample environment file:
 
-## Current Backend Scope
+```powershell
+copy .env.example .env
+```
 
-- `GET /health`
-- `POST /demo/seed`
-- `GET /doctors`
-- `GET /available-slots`
-- `POST /chat`
-- `POST /session/start`
-- `GET /session/{call_id}`
-- `POST /session/{call_id}/reset`
-- `POST /book-appointment`
-- `GET /dashboard/metrics`
-- `GET /dashboard/recent-bookings`
-- `GET /transcripts`
-- `GET /notifications`
-- `POST /transcribe` ElevenLabs/Groq/Faster-Whisper wrapper with optional transcript persistence and chat handoff
-- `POST /voice/turn` unified voice turn orchestration: STT + chat + optional TTS
-- `POST /tts` ElevenLabs/XTTS-backed speech generation
-- `POST /speech-to-speech` ElevenLabs speech-to-speech conversion
+For local stub testing, the default `.env.example` values are enough. For live testing, configure the providers below.
 
-## Recommended Frontend Flow
+## Required Live Provider Configuration
 
-The first frontend implementation is available at `/app`.
+### ElevenLabs
 
-Current UI behavior:
+ElevenLabs is used for speech-to-text and text-to-speech.
 
-- Black background voice interface
-- Centered live-agent signal with automatic listening/speaking/processing animation
-- Vaani greets the patient automatically
-- Automatic silence detection records patient speech and sends audio through `/voice/turn`
-- ElevenLabs/backend STT is the target real transcription path during provider testing
-- Text fallback input for browsers without microphone support, submitted with Enter
-- Doctor/slot cards from `chat.slot_options`
-- Selected appointment card remains visible after slot selection
-- Booking review panel from `chat.booking_review`
-- Review stays visible until the user confirms or corrects details
-- Green success state only after `next_state=booked`
-- Visible booking state clears and a fresh idle session starts automatically after confirmation
-- Patient-facing transcript is hidden; backend transcript logging remains available through `/transcripts`
-- No visible control buttons in the main interaction
+```env
+STT_PROVIDER=elevenlabs
+TTS_PROVIDER=elevenlabs
+ELEVENLABS_API_KEY=...
+ELEVENLABS_VOICE_ID=...
+ELEVENLABS_STT_MODEL=scribe_v2
+ELEVENLABS_TTS_MODEL=eleven_multilingual_v2
+ELEVENLABS_OUTPUT_FORMAT=mp3_44100_128
+```
 
-Use the automatic browser voice loop for the main interaction:
+### OpenRouter
 
-1. Frontend starts a session with `POST /session/start`.
-2. Vaani speaks the opening greeting.
-3. Browser listens automatically and records until silence is detected.
-4. Recorded audio is sent to `POST /voice/turn`.
-5. Frontend speaks the assistant reply using backend TTS audio when available, otherwise browser speech synthesis.
-6. Frontend shows doctor/slot cards, selected slot, review screen, and final green tick.
-7. Frontend can rehydrate state with `GET /session/{call_id}` after refresh.
+OpenRouter is used for natural conversation fallback and optional receptionist-style reply polishing.
 
-## Interactive Booking Flow (Current)
+```env
+LLM_PROVIDER=openrouter
+OPENROUTER_API_KEY=...
+OPENROUTER_MODEL=openai/gpt-4o
+VOICE_AGENT_POLISH_REPLIES=true
+```
 
-Conversation state machine for appointment booking:
+### Fast2SMS
 
-1. User asks for doctor/symptom support.
-2. Backend returns available slot options.
-3. Backend collects verbal details in this order:
-   - name
-   - gender
-   - age
-   - phone
-4. Backend returns `booking_review` for on-screen confirmation.
-5. User confirms -> slot is booked -> SMS confirmation is sent/logged.
-
-## Booking Confirmation SMS
-
-Booking confirmations call an SMS service after `/chat` or `/book-appointment` creates a confirmed appointment. The default `SMS_PROVIDER=stub` does not send real messages, but it logs the attempt in `/notifications` so local demos and tests are deterministic. The current target provider is Fast2SMS.
-
-To send real SMS messages, configure one provider.
-
-Fast2SMS:
+Fast2SMS sends the final appointment confirmation.
 
 ```env
 SMS_PROVIDER=fast2sms
@@ -137,84 +233,9 @@ FAST2SMS_SENDER_ID=
 CLINIC_NAME="Pawani Medicals"
 ```
 
-Twilio remains a legacy optional provider if needed later:
-
-```env
-SMS_PROVIDER=twilio
-TWILIO_ACCOUNT_SID=...
-TWILIO_AUTH_TOKEN=...
-TWILIO_FROM_NUMBER=+1...
-```
-
-## Speech-to-Text Setup
-
-Copy `.env.example` to `.env` and change only the providers you want to enable.
-
-Local Faster-Whisper STT does not require an API key and works in the current Python 3.12 environment:
-
-```powershell
-pip install -r requirements-audio.txt
-```
-
-Then set:
-
-```env
-STT_PROVIDER=faster_whisper
-STT_MODEL_SIZE=small
-STT_DEVICE=cpu
-STT_COMPUTE_TYPE=int8
-```
-
-ElevenLabs STT is the target provider for the current MVP:
-
-```env
-STT_PROVIDER=elevenlabs
-ELEVENLABS_API_KEY=...
-ELEVENLABS_STT_MODEL=scribe_v2
-```
-
-Groq STT is still available as a legacy fallback:
-
-```env
-STT_PROVIDER=groq
-GROQ_API_KEY=...
-GROQ_STT_MODEL=whisper-large-v3-turbo
-```
-
-Use `/transcribe` with multipart form data:
-
-- `audio`: uploaded audio file.
-- `call_id`: optional call/session id. When present, successful transcription is stored in transcripts.
-- `user_phone`: optional user key, defaults to `demo`.
-- `language`: fallback language when STT cannot detect one.
-- `auto_chat`: set `true` to immediately pass the transcribed text through the booking chat engine.
-
-The response includes the transcribed `text`, detected `language`, STT `status`, and an optional `chat` response when `auto_chat=true`.
-
-## LLM Setup (OpenRouter)
-
-Conversation fallback/inquiry responses use OpenRouter. The backend can also ask OpenRouter to polish safe assistant prompts into smoother receptionist-style voice lines while keeping booking decisions, slot validation, and SMS logic inside VaaniAI.
-
-```env
-LLM_PROVIDER=openrouter
-OPENROUTER_API_KEY=...
-OPENROUTER_MODEL=openai/gpt-4o
-VOICE_AGENT_POLISH_REPLIES=true
-```
-
-The polishing layer is intentionally not used for slot lists, booking review details, booking IDs, phone numbers, or final confirmation data.
-
-## Google Calendar Setup
+### Optional Google Calendar
 
 Google Calendar sync is optional. When enabled, each confirmed booking creates a calendar event and stores the sync status on the appointment.
-
-Install dependencies from the main requirements file:
-
-```powershell
-pip install -r requirements.txt
-```
-
-Then set:
 
 ```env
 CALENDAR_PROVIDER=google
@@ -222,90 +243,94 @@ GOOGLE_CALENDAR_ID=your-calendar-id@gmail.com
 GOOGLE_CALENDAR_CREDENTIALS_FILE=D:\VaaniAI\secrets\google-calendar-service-account.json
 ```
 
-Keep the service account JSON outside git. Share the target Google Calendar with the service account email before testing.
+Keep the service account JSON outside git. Share the target calendar with the service account email before testing.
 
-## Text-to-Speech Setup
+## Database
 
-ElevenLabs TTS is the target provider for Vaani's spoken assistant replies:
-
-```env
-TTS_PROVIDER=elevenlabs
-ELEVENLABS_API_KEY=...
-ELEVENLABS_VOICE_ID=...
-ELEVENLABS_TTS_MODEL=eleven_multilingual_v2
-ELEVENLABS_OUTPUT_FORMAT=mp3_44100_128
-```
-
-Optional ElevenLabs speech-to-speech conversion uses the same API key and voice id:
+The default database is local SQLite:
 
 ```env
-ELEVENLABS_STS_MODEL=eleven_multilingual_sts_v2
+DATABASE_URL=sqlite:///./vaaniai.db
 ```
 
-Local XTTS TTS remains available, but Coqui `TTS` currently needs Python 3.10 or 3.11. Install it in a separate compatible virtual environment:
+For hosted deployment, use a persistent database:
+
+```env
+DATABASE_URL=mysql+pymysql://USER:PASSWORD@HOST:3306/vaaniai
+```
+
+The app includes startup migration logic for the current MVP schema, including doctor symptoms, session booking fields, calendar status fields, and MySQL-safe call state storage.
+
+## Run Locally
+
+Seed demo data:
 
 ```powershell
-py -3.11 -m venv .venv-tts
-.\.venv-tts\Scripts\Activate.ps1
-pip install -r requirements.txt
-pip install -r requirements-tts.txt
+python scripts\seed_demo_data.py
 ```
 
-Then set:
+Start the app:
 
-```env
-TTS_PROVIDER=xtts
-TTS_SPEAKER_WAV=D:\VaaniAI\voice_samples\doctor.wav
+```powershell
+python -m uvicorn app.main:app --reload --port 8020
 ```
 
-`GEMINI_API_KEY` is only needed when the LLM response layer is added. `VAPI_API_KEY` and `VAPI_ASSISTANT_ID` are only needed when phone-call integration is added.
+Open:
 
-## Demo Provider Testing Checklist
-
-Before frontend testing, confirm `.env` contains:
-
-```env
-STT_PROVIDER=elevenlabs
-TTS_PROVIDER=elevenlabs
-ELEVENLABS_API_KEY=...
-ELEVENLABS_VOICE_ID=...
-ELEVENLABS_STT_MODEL=scribe_v2
-ELEVENLABS_TTS_MODEL=eleven_multilingual_v2
-ELEVENLABS_STS_MODEL=eleven_multilingual_sts_v2
-ELEVENLABS_OUTPUT_FORMAT=mp3_44100_128
-
-LLM_PROVIDER=openrouter
-OPENROUTER_API_KEY=...
-OPENROUTER_MODEL=openai/gpt-4o
-VOICE_AGENT_POLISH_REPLIES=true
-
-SMS_PROVIDER=fast2sms
-FAST2SMS_API_KEY=...
-FAST2SMS_ROUTE=q
-FAST2SMS_LANGUAGE=english
-FAST2SMS_SENDER_ID=
-CLINIC_NAME="Pawani Medicals"
-
-# Optional calendar sync
-CALENDAR_PROVIDER=disabled
-GOOGLE_CALENDAR_ID=
-GOOGLE_CALENDAR_CREDENTIALS_FILE=
+```text
+http://127.0.0.1:8020/app
 ```
 
-Run:
+API docs:
+
+```text
+http://127.0.0.1:8020/docs
+```
+
+## Testing
+
+Run the test suite:
 
 ```powershell
 pytest -q
-python -m uvicorn app.main:app --reload
 ```
 
-Then test one full flow:
+Expected current result:
 
-`microphone audio -> /voice/turn -> ElevenLabs STT -> booking flow/OpenRouter fallback -> ElevenLabs TTS -> DB booking -> Fast2SMS confirmation -> frontend success state`.
+```text
+45 passed
+```
 
-## Hosting Readiness
+Check frontend JavaScript syntax:
 
-For a public demo, deploy the FastAPI app and serve `/app` from the same backend. Required environment values on the host:
+```powershell
+node --check frontend\app.js
+```
+
+## Local Demo Checklist
+
+Before showing the demo:
+
+- Start the server on port `8020`.
+- Open `/app`.
+- Confirm Vaani speaks the greeting.
+- Allow microphone permission.
+- Say a symptom such as "I have knee pain" or a specialty such as "I need a cardiologist".
+- Confirm doctor and slot cards stay visible until selection.
+- Select a slot by speaking the slot time or slot number.
+- Confirm the selected appointment panel appears.
+- Give name, gender, age, and phone.
+- Confirm the review panel stays visible until confirmation.
+- Say confirm.
+- Confirm success state appears.
+- Confirm SMS is sent or logged.
+- Confirm appointment is created in the database.
+
+## Hosting Plan
+
+For a hosted demo, deploy the FastAPI app and serve `/app` from the same backend.
+
+Required hosted environment values:
 
 ```env
 PUBLIC_BASE_URL=https://your-public-domain.example
@@ -316,14 +341,57 @@ LLM_PROVIDER=openrouter
 SMS_PROVIDER=fast2sms
 ```
 
-Pre-host checklist:
+Recommended deployment sequence:
 
-- Run `pytest -q`.
-- Start locally with `python -m uvicorn app.main:app --reload --port 8020`.
-- Complete one booking from `http://127.0.0.1:8020/app`.
-- Confirm ElevenLabs audio is heard from the browser.
-- Confirm Fast2SMS sends or logs the final confirmation.
-- If calendar sync is enabled, confirm `calendar_status=calendar_synced` on the appointment.
-- Use a tunnel such as `ngrok http 8020` for temporary friend testing before final hosting.
+1. Push the repository to GitHub.
+2. Choose a hosting provider such as Render, Railway, or Fly.io.
+3. Add all environment variables in the hosting dashboard.
+4. Use a persistent database instead of local SQLite.
+5. Set the start command:
 
-The backend and frontend are ready for local and tunnel-based demo testing. Final hosting mainly needs provider keys, public base URL, persistent database choice, and deployment target configuration.
+```bash
+uvicorn app.main:app --host 0.0.0.0 --port $PORT
+```
+
+6. Open `https://your-domain/app`.
+7. Run one full booking with real ElevenLabs, OpenRouter, and Fast2SMS keys.
+
+For temporary sharing from a local machine:
+
+```powershell
+python -m uvicorn app.main:app --reload --port 8020
+ngrok http 8020
+```
+
+Then share:
+
+```text
+https://your-ngrok-domain/app
+```
+
+## Security Notes
+
+Do not commit:
+
+- `.env`
+- API keys
+- `vaaniai.db`
+- generated audio files
+- Google service account JSON files
+- production call or patient data
+
+The repository includes `.gitignore` rules for local secrets, generated audio, virtual environments, logs, and local databases.
+
+For this MVP, production-grade authentication and distributed rate limiting are intentionally out of scope. The app includes optional API-key protection, upload validation, and simple local rate limiting as demo safeguards.
+
+## Current Status
+
+The backend, local web UI, voice turn orchestration, symptom/specialty matching, appointment booking flow, Fast2SMS integration, ElevenLabs STT/TTS integration, OpenRouter integration, optional Google Calendar sync, and automated tests are implemented.
+
+Remaining work before public demo:
+
+- Add real provider keys on the host.
+- Configure hosted database and public URL.
+- Run one complete hosted voice booking test.
+- Verify SMS delivery in the hosted environment.
+- Enable and verify Google Calendar sync only if required for the demo.
