@@ -42,6 +42,7 @@ from app.services import (
     list_transcripts,
     record_user_transcript,
     reset_session,
+    reset_demo_database,
     reset_test_bookings,
     seed_demo_data,
     send_booking_confirmation,
@@ -133,6 +134,16 @@ def reset_bookings(
 ) -> dict[str, str]:
     reset_test_bookings(session)
     return {"status": "reset"}
+
+
+@app.post("/demo/reset-db")
+def reset_db(
+    _: None = Depends(require_api_key),
+    __: None = Depends(rate_limit),
+    session: Session = Depends(get_session),
+) -> dict[str, str]:
+    reset_demo_database(session)
+    return {"status": "database_reset"}
 
 
 @app.get("/doctors", response_model=list[DoctorRead])

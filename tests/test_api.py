@@ -212,6 +212,33 @@ def test_doctors_include_symptoms_column() -> None:
         app.dependency_overrides.clear()
 
 
+def test_demo_reset_db_clears_bookings_and_keeps_slots() -> None:
+    call_id = f"reset-db-{uuid4().hex}"
+    use_in_memory_database()
+    try:
+        with TestClient(app) as client:
+            client.post("/chat", json={"call_id": call_id, "user_phone": "9444444444", "message": "I need a dentist appointment"})
+            client.post("/chat", json={"call_id": call_id, "user_phone": "9444444444", "message": "Tomorrow 10 am"})
+            client.post("/chat", json={"call_id": call_id, "user_phone": "9444444444", "message": "My name is Reset Patient"})
+            client.post("/chat", json={"call_id": call_id, "user_phone": "9444444444", "message": "yes"})
+            client.post("/chat", json={"call_id": call_id, "user_phone": "9444444444", "message": "male"})
+            client.post("/chat", json={"call_id": call_id, "user_phone": "9444444444", "message": "30"})
+            client.post("/chat", json={"call_id": call_id, "user_phone": "9444444444", "message": "9876543210"})
+            booked = client.post("/chat", json={"call_id": call_id, "user_phone": "9444444444", "message": "confirm"})
+            assert booked.json()["appointment_id"] is not None
+
+            reset = client.post("/demo/reset-db")
+            metrics = client.get("/dashboard/metrics").json()
+            slots = client.get("/available-slots").json()
+
+        assert reset.status_code == 200
+        assert reset.json() == {"status": "database_reset"}
+        assert metrics["total_bookings_today"] == 0
+        assert slots
+    finally:
+        app.dependency_overrides.clear()
+
+
 def test_voice_turn_orchestration(monkeypatch) -> None:
     call_id = f"voice-turn-{uuid4().hex}"
     use_in_memory_database()

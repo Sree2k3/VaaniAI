@@ -3,7 +3,7 @@ import unicodedata
 from datetime import datetime, time, timedelta, timezone
 
 from fastapi import HTTPException
-from sqlalchemy import func
+from sqlalchemy import delete, func
 from sqlalchemy.exc import IntegrityError
 from sqlmodel import Session, and_, select, text
 
@@ -1384,6 +1384,13 @@ def reset_test_bookings(session: Session) -> None:
         slot.is_booked = False
         session.add(slot)
     session.commit()
+
+
+def reset_demo_database(session: Session) -> None:
+    reset_test_bookings(session)
+    session.exec(delete(User))
+    session.commit()
+    seed_demo_data(session)
 
 
 def seed_demo_operational_data(session: Session, doctors: list[Doctor]) -> None:
