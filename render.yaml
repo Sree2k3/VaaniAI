@@ -1,0 +1,41 @@
+services:
+  - type: web
+    name: vaaniai
+    env: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.12.7
+      - key: APP_NAME
+        value: VaaniAI Backend
+      - key: DEMO_MODE
+        value: true
+      - key: STT_PROVIDER
+        value: elevenlabs
+      - key: TTS_PROVIDER
+        value: elevenlabs
+      - key: ELEVENLABS_STT_MODEL
+        value: scribe_v2
+      - key: ELEVENLABS_TTS_MODEL
+        value: eleven_multilingual_v2
+      - key: ELEVENLABS_STS_MODEL
+        value: eleven_multilingual_sts_v2
+      - key: ELEVENLABS_OUTPUT_FORMAT
+        value: mp3_44100_128
+      - key: LLM_PROVIDER
+        value: openrouter
+      - key: OPENROUTER_MODEL
+        value: openai/gpt-4o
+      - key: VOICE_AGENT_POLISH_REPLIES
+        value: true
+      - key: SMS_PROVIDER
+        value: fast2sms
+      - key: FAST2SMS_ROUTE
+        value: q
+      - key: FAST2SMS_LANGUAGE
+        value: english
+      - key: CLINIC_NAME
+        value: Pawani Medicals
+      - key: CALENDAR_PROVIDER
+        value: disabled
