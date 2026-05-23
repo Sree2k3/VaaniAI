@@ -284,7 +284,7 @@ class TextToSpeechService:
     ) -> SpeechResult:
         language_code = TextToSpeechService._normalize_language(language)
         voice_id = voice_id.strip()
-        fallback_voice_id = fallback_voice_id.strip()
+        fallback_voice_id = (fallback_voice_id or "").strip()
         payload = json.dumps(
             {
                 "text": text,

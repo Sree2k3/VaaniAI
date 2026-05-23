@@ -79,3 +79,22 @@ def test_elevenlabs_tts_dispatch(monkeypatch) -> None:
 
     assert result.status == "synthesized"
     assert result.audio_url == "http://test/audio.mp3"
+
+
+def test_elevenlabs_tts_allows_empty_fallback_voice(monkeypatch) -> None:
+    monkeypatch.setenv("TTS_PROVIDER", "elevenlabs")
+    monkeypatch.setenv("ELEVENLABS_API_KEY", "demo-key")
+    monkeypatch.setenv("ELEVENLABS_VOICE_ID", "voice-id")
+    monkeypatch.setenv("ELEVENLABS_FALLBACK_VOICE_ID", "")
+    get_settings.cache_clear()
+
+    monkeypatch.setattr(
+        TextToSpeechService,
+        "_request_elevenlabs_tts",
+        staticmethod(lambda *_args, **_kwargs: b"mp3-bytes"),
+    )
+
+    result = TextToSpeechService().synthesize("Hello", "en")
+
+    assert result.status == "synthesized"
+    assert result.audio_url is not None
