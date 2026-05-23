@@ -789,6 +789,61 @@ h2 {
   color: var(--danger);
 }
 
+.creator-credit {
+  position: fixed;
+  right: 18px;
+  bottom: 16px;
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  border: 1px solid rgba(255, 255, 255, 0.11);
+  border-radius: 999px;
+  background: rgba(7, 11, 15, 0.72);
+  box-shadow: 0 14px 38px rgba(0, 0, 0, 0.32);
+  padding: 8px 9px 8px 13px;
+  backdrop-filter: blur(14px);
+}
+
+.creator-credit span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 750;
+  white-space: nowrap;
+}
+
+.creator-credit a {
+  display: grid;
+  width: 28px;
+  aspect-ratio: 1;
+  place-items: center;
+  border: 1px solid rgba(125, 214, 255, 0.22);
+  border-radius: 999px;
+  color: var(--soft);
+  background: rgba(255, 255, 255, 0.045);
+  text-decoration: none;
+  transition: transform 160ms ease, border-color 160ms ease, color 160ms ease, background 160ms ease;
+}
+
+.creator-credit a:hover,
+.creator-credit a:focus-visible {
+  transform: translateY(-1px);
+  border-color: rgba(74, 222, 159, 0.42);
+  color: var(--mint);
+  background: rgba(74, 222, 159, 0.08);
+  outline: none;
+}
+
+.creator-credit svg {
+  width: 15px;
+  height: 15px;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.9;
+}
+
 @keyframes orbPulse {
   0%,
   100% {
@@ -914,5 +969,17 @@ h2 {
 
   .review-grid {
     grid-template-columns: 1fr;
+  }
+
+  .creator-credit {
+    right: 10px;
+    bottom: 10px;
+    max-width: calc(100% - 20px);
+  }
+
+  .creator-credit span {
+    max-width: 150px;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
 }
