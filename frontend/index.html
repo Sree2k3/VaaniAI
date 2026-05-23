@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>VaaniAI Voice Receptionist</title>
+    <link rel="stylesheet" href="/static/styles.css">
+  </head>
+  <body>
+    <div class="ambient-frame" aria-hidden="true">
+      <span></span>
+      <span></span>
+      <span></span>
+    </div>
+    <main class="shell">
+      <section class="voice-stage" aria-label="Voice assistant">
+        <div class="topbar">
+          <div class="brand-lockup">
+            <span class="brand-mark" aria-hidden="true">
+              <svg viewBox="0 0 24 24">
+                <path d="M12 3v18M3 12h18"></path>
+              </svg>
+            </span>
+            <div>
+              <p class="eyebrow">Pawani Medicals</p>
+              <h1>Vaani Reception</h1>
+            </div>
+          </div>
+          <div class="status-pill" id="connectionStatus">Ready</div>
+        </div>
+
+        <div class="stage-copy">
+          <p>Live appointment intake</p>
+          <span>Speak naturally. Vaani will match symptoms or requested specialists to available doctors.</span>
+        </div>
+
+        <div class="insight-row" aria-label="Assistant capabilities">
+          <div>
+            <strong>13</strong>
+            <span>Specialties</span>
+          </div>
+          <div>
+            <strong>Voice</strong>
+            <span>Auto intake</span>
+          </div>
+          <div>
+            <strong>SMS</strong>
+            <span>Confirmation</span>
+          </div>
+        </div>
+
+        <div class="orb-wrap">
+          <div class="voice-orb listening" id="voiceOrb" role="img" aria-label="VaaniAI voice status" tabindex="0">
+            <span class="orb-core"></span>
+            <span class="orb-ring ring-one"></span>
+            <span class="orb-ring ring-two"></span>
+            <svg aria-hidden="true" viewBox="0 0 48 48" class="signal-icon">
+              <path d="M8 24h5l4-9 7 20 7-22 4 11h5"></path>
+              <circle cx="24" cy="24" r="3"></circle>
+            </svg>
+          </div>
+          <p class="orb-caption" id="recordHint">Starting Vaani...</p>
+          <p class="assistant-line" id="assistantLine">Connecting to Vaani...</p>
+          <input class="manual-entry" id="textInput" type="text" autocomplete="off" placeholder="Type a correction and press Enter" hidden>
+          <p class="unlock-note" id="unlockNote" hidden>Click anywhere once to start Vaani's voice and microphone.</p>
+        </div>
+
+        <div class="flow-strip" aria-label="Booking flow">
+          <span>Symptoms</span>
+          <span>Doctor</span>
+          <span>Slot</span>
+          <span>Details</span>
+          <span>SMS</span>
+        </div>
+
+        <section class="hidden-transcript" aria-label="Conversation transcript">
+          <div class="transcript-list" id="transcriptList" aria-live="polite"></div>
+        </section>
+      </section>
+
+      <aside class="side-panel" aria-label="Booking details">
+        <section class="info-box">
+          <div class="panel-header">
+            <div>
+              <p class="panel-kicker">Matched availability</p>
+              <h2>Doctors and slots</h2>
+            </div>
+            <span class="small-status" id="stateLabel">idle</span>
+          </div>
+          <div class="panel-subline">
+            <span>Specialist match</span>
+            <span>Live slots</span>
+          </div>
+          <div class="cards" id="slotCards">
+            <p class="empty-text">Doctor options will appear here after Vaani understands the symptom or specialist.</p>
+          </div>
+        </section>
+
+        <section class="info-box selected-slot-box" id="selectedSlotBox" hidden>
+          <div class="panel-header">
+            <div>
+              <p class="panel-kicker">Selected appointment</p>
+              <h2>Doctor and slot</h2>
+            </div>
+            <span class="small-status">selected</span>
+          </div>
+          <div class="selected-slot-details" id="selectedSlotDetails"></div>
+        </section>
+
+        <section class="info-box" id="reviewBox" hidden>
+          <div class="panel-header">
+            <div>
+              <p class="panel-kicker">Final check</p>
+              <h2>Review booking</h2>
+            </div>
+            <span class="small-status">confirm</span>
+          </div>
+          <dl class="review-grid" id="reviewGrid"></dl>
+        </section>
+
+        <section class="success-box" id="successBox" hidden>
+          <div class="checkmark" aria-hidden="true">
+            <svg viewBox="0 0 24 24">
+              <path d="M20 6 9 17l-5-5"></path>
+            </svg>
+          </div>
+          <h2>Appointment booked</h2>
+          <p id="successText">Confirmation SMS has been processed.</p>
+        </section>
+      </aside>
+    </main>
+
+    <script src="/static/app.js"></script>
+  </body>
+</html>

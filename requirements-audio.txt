@@ -1,0 +1,2 @@
+# Optional Phase 3 STT dependency for the current Python 3.12 environment.
+faster-whisper>=1.1.1

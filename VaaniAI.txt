@@ -1,0 +1,328 @@
+VaaniAI Backend - Updated PRD and Implementation Status
+
+Version: 3.5
+Last Updated: 2026-05-23
+Project: VaaniAI Healthcare Receptionist MVP
+
+==================================================
+1) Product Direction (Updated)
+==================================================
+
+VaaniAI is now implemented as a web-interactive voice receptionist backend.
+Telephony/call routing is not required for current delivery.
+
+Core objective:
+- patient speaks in browser UI,
+- backend transcribes speech,
+- assistant handles booking or inquiry conversation,
+- booking is confirmed only after verbal data collection and screen review,
+- confirmation SMS is sent to patient phone.
+
+Emergency workflow is intentionally excluded for now.
+
+Current delivery target:
+- demo MVP, not production deployment,
+- web voice-agent UI instead of telephone call routing,
+- local, tunneled, and hosted testing with real provider keys.
+
+Backend completion estimate for this agreed MVP:
+- 98-99% complete before final hosting setup and live provider sign-off.
+
+==================================================
+2) Final Backend Scope (Current)
+==================================================
+
+Implemented API stack:
+- GET  /
+- GET  /health
+- POST /demo/seed
+- GET  /doctors
+- GET  /available-slots
+- POST /chat
+- POST /session/start
+- GET  /session/{call_id}
+- POST /session/{call_id}/reset
+- POST /book-appointment
+- GET  /dashboard/metrics
+- GET  /dashboard/recent-bookings
+- GET  /transcripts
+- GET  /notifications
+- POST /transcribe
+- POST /tts
+- POST /speech-to-speech
+- POST /voice/turn
+
+==================================================
+3) Booking Conversation Contract
+==================================================
+
+Implemented conversation flow:
+
+1. User asks by symptom or specialization.
+   Example: "I have chest pain" -> mapped to cardiologist intent.
+   Example: "I need an orthopedics doctor" -> mapped directly to orthopedics.
+
+2. Backend returns slot options (`slot_options` in chat response).
+   The frontend keeps these options visible until the user selects a doctor/slot.
+
+3. User chooses slot (time text or slot id).
+   The frontend then shows a selected appointment panel with doctor, specialty, slot, and time.
+
+4. Backend collects patient details in strict order:
+   - name
+   - gender
+   - age
+   - phone
+
+5. Backend returns `booking_review` payload for on-screen confirmation.
+   The frontend keeps the review panel visible until the user confirms or denies/corrects.
+
+6. User says confirm.
+   - appointment is created,
+   - slot is locked,
+   - confirmation SMS is sent via configured provider,
+   - chat returns `next_state=booked` with booking id and notification status.
+
+If user says no at review stage, backend loops back to re-collect details.
+
+==================================================
+4) Voice Interaction Modes
+==================================================
+
+Mode A: Step-by-step integration
+- frontend uploads audio to `/transcribe`
+- frontend sends recognized text to `/chat`
+- frontend calls `/tts` for assistant speech
+
+Mode B: Single-turn orchestration (recommended)
+- frontend uploads audio to `/voice/turn`
+- backend performs STT -> chat -> optional TTS in one request
+- response contains:
+  - `stt_text`, `stt_status`
+  - `chat` (reply, state, actions, slot options, booking review)
+  - `tts` (audio url/status) when synthesis enabled
+
+==================================================
+5) Providers and Environment
+==================================================
+
+Configured target stack:
+- STT: ElevenLabs
+- TTS: ElevenLabs
+- Optional speech-to-speech: ElevenLabs
+- LLM fallback/inquiry: OpenRouter
+- Voice-agent response polishing: OpenRouter, gated by backend safety rules
+- SMS: Fast2SMS
+- Calendar sync: optional Google Calendar
+- Legacy/local fallback options: Groq STT, Faster-Whisper STT, XTTS TTS, stub providers
+
+Production-grade authentication and persistent/distributed rate limiting are not required for this demo MVP.
+The current optional API key and in-memory rate limiter are sufficient as demo safeguards.
+
+Reference .env values:
+
+APP_NAME="VaaniAI Backend"
+DATABASE_URL="sqlite:///./vaaniai.db"
+PUBLIC_BASE_URL="http://127.0.0.1:8000"
+DEMO_MODE=true
+
+SMS_PROVIDER=fast2sms
+FAST2SMS_API_KEY=...
+FAST2SMS_ROUTE=q
+FAST2SMS_LANGUAGE=english
+FAST2SMS_SENDER_ID=
+CLINIC_NAME="Pawani Medicals"
+
+LLM_PROVIDER=openrouter
+OPENROUTER_API_KEY=...
+OPENROUTER_MODEL=openai/gpt-4o
+VOICE_AGENT_POLISH_REPLIES=true
+
+STT_PROVIDER=elevenlabs
+TTS_PROVIDER=elevenlabs
+ELEVENLABS_API_KEY=...
+ELEVENLABS_VOICE_ID=...
+ELEVENLABS_STT_MODEL=scribe_v2
+ELEVENLABS_TTS_MODEL=eleven_multilingual_v2
+ELEVENLABS_STS_MODEL=eleven_multilingual_sts_v2
+ELEVENLABS_OUTPUT_FORMAT=mp3_44100_128
+
+# Optional Google Calendar sync
+CALENDAR_PROVIDER=disabled
+GOOGLE_CALENDAR_ID=
+GOOGLE_CALENDAR_CREDENTIALS_FILE=
+
+# Optional API protection
+API_KEY=
+RATE_LIMIT_PER_MINUTE=120
+MAX_AUDIO_UPLOAD_BYTES=10485760
+ALLOWED_AUDIO_CONTENT_TYPES=audio/wav,audio/x-wav,audio/mpeg,audio/mp3,audio/mp4,audio/webm,audio/ogg,application/octet-stream
+
+==================================================
+6) Data Model Status
+==================================================
+
+Current entities:
+- User
+- Doctor
+- Slot
+- Appointment
+- CallLog (session conversation state)
+- Transcript
+- NotificationLog
+
+Added for new web booking flow:
+- user: gender, age
+- doctor: symptoms
+- appointment: calendar_event_id, calendar_status
+- call/session: selected_specialization, patient_name, patient_gender, patient_age, patient_phone
+- conversation states:
+  idle, collect_specialization, show_slots, collect_name, collect_gender,
+  collect_age, collect_phone, review_booking, confirm_booking, booked
+
+Startup migration logic is implemented to add new columns safely on existing SQLite and MySQL DBs.
+
+==================================================
+7) Progress Checklist
+==================================================
+
+[x] Web-interactive backend-first architecture
+[x] Symptom/specialization intent mapping
+[x] Expanded doctor specialization and symptom seed data
+[x] Slot discovery and selection
+[x] 4-field verbal intake (name, gender, age, phone)
+[x] On-screen review payload (`booking_review`)
+[x] Final confirmation gate before booking
+[x] Appointment persistence and slot locking
+[x] Fast2SMS integration and notification logs
+[x] Optional Google Calendar event sync hook
+[x] ElevenLabs STT integration
+[x] ElevenLabs TTS integration
+[x] Optional ElevenLabs speech-to-speech endpoint
+[x] Legacy Groq STT integration
+[x] OpenRouter integration for inquiry/fallback replies
+[x] OpenRouter voice-agent polishing for safe receptionist prompts
+[x] Unified `/voice/turn` API for live browser voice loop
+[x] Session lifecycle APIs (`/session/start`, `/session/{call_id}`, `/reset`)
+[x] Transcript and dashboard endpoints
+[x] Automated tests for chat flow, API contracts, messaging, STT dispatch, voice turn
+[x] State-preserving fallback so unclear input does not reset an active booking
+[x] Optional API key protection with `X-API-Key`
+[x] In-memory per-client rate limiting for core write/voice endpoints
+[x] Audio upload validation for content type, empty files, and max file size
+[x] SQLite/MySQL startup schema migration support
+[x] First frontend screen served at `/app`
+[x] Automatic browser voice UI with no visible interaction buttons
+[x] Vaani greeting with browser speech synthesis
+[x] Central animated microphone orb for listening/speaking/processing states
+[x] Backend transcript logging with transcript hidden from the live patient UI
+[x] Doctor/slot cards, booking review panel, and green booking success state
+[x] Selected appointment panel after doctor/slot selection
+[x] Persistent slot options until selection
+[x] Persistent booking review until confirmation/correction
+
+[ ] Live provider testing with real ElevenLabs, OpenRouter, and Fast2SMS keys
+[ ] Deployment/hosting configuration for public demo link
+[ ] MCP-based hosting/integration layer, if selected for final demo deployment
+[ ] Optional telephony transport layer
+
+Not required for demo MVP:
+- production-grade authentication
+- persistent/distributed rate limiting
+- emergency workflow
+- telephony/call routing
+
+==================================================
+8) Test and Quality Status
+==================================================
+
+Latest run:
+- `pytest -q` -> 45 passed, 0 failed
+
+Covered by tests:
+- booking conversation transitions
+- slot hint handling
+- patient data collection flow
+- notification creation
+- STT endpoint behavior
+- ElevenLabs STT/TTS provider dispatch and credential checks
+- voice-agent polishing and safety bypass for slot lists
+- voice-turn orchestration endpoint
+- session start/read/reset contracts
+- fallback state preservation
+- audio upload validation
+- optional API key enforcement
+- calendar sync status handling
+- frontend JavaScript syntax validation with `node --check frontend\app.js`
+
+==================================================
+9) Handoff for Frontend
+==================================================
+
+Frontend can be built now directly against these stable contracts:
+- `/app` to open the current web voice UI
+- `/session/start` to initialize a new interaction id
+- `/voice/turn` for main voice loop
+- `/session/{call_id}` to rehydrate current state if page reloads
+- `/chat` as text fallback
+- `/notifications` for delivery audit/debug
+
+Recommended frontend flow:
+1. Create or reuse a `call_id`.
+2. Start session with `/session/start`.
+3. Vaani speaks: "Hi, I am Vaani from Pawani Medicals. Tell me what is going on, and I will help you find the right appointment."
+4. Browser listens automatically and records until silence is detected.
+5. Recorded audio is sent to `/voice/turn`.
+6. Backend returns STT text and chat response.
+7. Browser speaks returned `chat.reply` or backend TTS audio when available.
+8. Render `chat.slot_options` as doctor/slot cards when present. Vaani should summarize these naturally instead of reading every slot aloud.
+9. Keep slot cards visible until selection; after selection, show the selected appointment panel.
+10. Render and preserve `chat.booking_review` before final confirmation.
+11. On `next_state=booked`, show green success tick and booking id.
+12. Use `notification_status` to show whether Fast2SMS confirmation was sent/logged.
+13. After the confirmation moment, clear visible booking details and start a fresh idle session automatically.
+
+Live MVP test path:
+- `mic audio -> /voice/turn -> ElevenLabs STT -> booking state machine/OpenRouter fallback -> ElevenLabs TTS -> appointment DB save -> Fast2SMS SMS -> frontend success state`
+
+Current frontend status:
+- implemented as static files in `frontend/`
+- served by FastAPI at `http://127.0.0.1:8000/app`
+- uses automatic microphone recording with silence detection for `/voice/turn`
+- uses browser speech recognition only for interim transcript when supported
+- uses backend TTS audio when available, otherwise browser speech synthesis for Vaani's spoken replies
+- hides patient-facing transcript while preserving backend transcript logs
+- includes typed fallback through `/chat` with Enter key only when microphone access is blocked
+- no visible buttons in the main interaction
+
+==================================================
+10) Hosting Readiness
+==================================================
+
+Hosting is the next major step after final local provider testing.
+
+Required host configuration:
+- set `PUBLIC_BASE_URL` to the hosted HTTPS URL,
+- set `DATABASE_URL` to the selected hosted database,
+- configure ElevenLabs, OpenRouter, and Fast2SMS secrets,
+- keep generated audio and secret JSON files out of git,
+- enable Google Calendar only when credentials and calendar sharing are ready.
+
+Temporary public sharing:
+- run locally on a non-blocked port such as 8020,
+- use `ngrok http 8020`,
+- share `https://<ngrok-domain>/app`.
+
+Final hosting checklist:
+[ ] Choose hosting provider
+[ ] Configure production environment variables
+[ ] Configure persistent database
+[ ] Configure HTTPS public URL
+[ ] Run `pytest -q`
+[ ] Run one complete hosted booking flow
+[ ] Verify ElevenLabs STT/TTS from hosted browser
+[ ] Verify Fast2SMS confirmation
+[ ] Verify optional Google Calendar event creation, if enabled
+[ ] Confirm `/app`, `/health`, `/docs`, `/voice/turn`, `/notifications` work on hosted URL
+
+End of document.

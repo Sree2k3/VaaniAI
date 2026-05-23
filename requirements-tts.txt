@@ -1,0 +1,3 @@
+# Optional Phase 3 XTTS dependency.
+# Coqui TTS currently requires Python <3.12. Use a Python 3.10 or 3.11 virtualenv.
+TTS>=0.22.0
