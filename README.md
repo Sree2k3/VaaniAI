@@ -42,7 +42,7 @@ FastAPI /voice/turn
      |
      | audio bytes
      v
-ElevenLabs STT
+Cartesia STT
      |
      | transcribed text
      v
@@ -62,7 +62,7 @@ Database
      |
      | assistant reply
      v
-ElevenLabs TTS
+Cartesia TTS
      |
      | generated audio URL
      v
@@ -78,8 +78,8 @@ OpenRouter is used for conversational fallback and optional voice-agent reply po
 - Local database: SQLite
 - Hosted database option: MySQL or another SQLAlchemy-compatible database
 - Frontend: static HTML, CSS, and JavaScript served by FastAPI
-- STT: ElevenLabs
-- TTS: ElevenLabs
+- STT: Cartesia
+- TTS: Cartesia
 - LLM: OpenRouter
 - SMS: Fast2SMS
 - Optional calendar sync: Google Calendar API
@@ -89,7 +89,7 @@ OpenRouter is used for conversational fallback and optional voice-agent reply po
 
 ```text
 app/
-  audio.py          ElevenLabs, Groq, Faster-Whisper, and TTS wrappers
+  audio.py          Cartesia, ElevenLabs, Groq, Faster-Whisper, and TTS wrappers
   calendar.py       Optional Google Calendar sync
   config.py         Environment configuration
   database.py       Database engine and startup migrations
@@ -125,7 +125,7 @@ tests/
 2. Vaani greets the user
 3. Browser records speech automatically
 4. Frontend sends audio to /voice/turn
-5. Backend transcribes audio with ElevenLabs STT
+5. Backend transcribes audio with Cartesia STT
 6. Backend detects symptom or requested specialization
 7. Backend returns matching doctor/slot options
 8. User chooses a slot
@@ -195,19 +195,23 @@ For local stub testing, the default `.env.example` values are enough. For live t
 
 ## Required Live Provider Configuration
 
-### ElevenLabs
+### Cartesia
 
-ElevenLabs is used for speech-to-text and text-to-speech.
+Cartesia is used for speech-to-text and text-to-speech.
 
 ```env
-STT_PROVIDER=elevenlabs
-TTS_PROVIDER=elevenlabs
-ELEVENLABS_API_KEY=...
-ELEVENLABS_VOICE_ID=...
-ELEVENLABS_FALLBACK_VOICE_ID=
-ELEVENLABS_STT_MODEL=scribe_v2
-ELEVENLABS_TTS_MODEL=eleven_multilingual_v2
-ELEVENLABS_OUTPUT_FORMAT=mp3_44100_128
+STT_PROVIDER=cartesia
+TTS_PROVIDER=cartesia
+CARTESIA_API_KEY=...
+CARTESIA_VERSION=2026-03-01
+CARTESIA_STT_MODEL=ink-whisper
+CARTESIA_TTS_MODEL=sonic-3.5
+CARTESIA_VOICE_ID=...
+CARTESIA_OUTPUT_CONTAINER=mp3
+CARTESIA_SAMPLE_RATE=44100
+CARTESIA_BIT_RATE=128000
+CARTESIA_SPEED=1.0
+CARTESIA_VOLUME=1.0
 ```
 
 ### OpenRouter
@@ -217,7 +221,7 @@ OpenRouter is used for natural conversation fallback and optional receptionist-s
 ```env
 LLM_PROVIDER=openrouter
 OPENROUTER_API_KEY=...
-OPENROUTER_MODEL=openai/gpt-4o
+OPENROUTER_MODEL=openai/gpt-oss-120b
 VOICE_AGENT_POLISH_REPLIES=true
 ```
 
@@ -336,8 +340,8 @@ Required hosted environment values:
 ```env
 PUBLIC_BASE_URL=https://your-public-domain.example
 DATABASE_URL=...
-STT_PROVIDER=elevenlabs
-TTS_PROVIDER=elevenlabs
+STT_PROVIDER=cartesia
+TTS_PROVIDER=cartesia
 LLM_PROVIDER=openrouter
 SMS_PROVIDER=fast2sms
 ```
@@ -355,7 +359,7 @@ uvicorn app.main:app --host 0.0.0.0 --port $PORT
 ```
 
 6. Open `https://your-domain/app`.
-7. Run one full booking with real ElevenLabs, OpenRouter, and Fast2SMS keys.
+7. Run one full booking with real Cartesia, OpenRouter, and Fast2SMS keys.
 
 For temporary sharing from a local machine:
 
@@ -387,7 +391,7 @@ For this MVP, production-grade authentication and distributed rate limiting are 
 
 ## Current Status
 
-The backend, local web UI, voice turn orchestration, symptom/specialty matching, appointment booking flow, Fast2SMS integration, ElevenLabs STT/TTS integration, OpenRouter integration, optional Google Calendar sync, and automated tests are implemented.
+The backend, local web UI, voice turn orchestration, symptom/specialty matching, appointment booking flow, Fast2SMS integration, Cartesia STT/TTS integration, OpenRouter integration, optional Google Calendar sync, and automated tests are implemented.
 
 Remaining work before public demo:
 

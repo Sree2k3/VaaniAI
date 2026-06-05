@@ -54,6 +54,32 @@ def test_elevenlabs_stt_dispatch(monkeypatch) -> None:
     assert result.text == "hello"
 
 
+def test_cartesia_stt_requires_api_key(monkeypatch) -> None:
+    monkeypatch.setenv("STT_PROVIDER", "cartesia")
+    monkeypatch.setenv("CARTESIA_API_KEY", "")
+    get_settings.cache_clear()
+
+    result = SpeechToTextService().transcribe(b"audio-bytes", "test.webm")
+
+    assert result.status == "stt_credentials_missing"
+
+
+def test_cartesia_stt_dispatch(monkeypatch) -> None:
+    monkeypatch.setenv("STT_PROVIDER", "cartesia")
+    monkeypatch.setenv("CARTESIA_API_KEY", "demo-key")
+    monkeypatch.setenv("CARTESIA_STT_MODEL", "ink-whisper")
+    get_settings.cache_clear()
+
+    def fake_transcribe(*args, **kwargs):
+        return TranscriptionResult(text="namaste", language="hi", status="transcribed")
+
+    monkeypatch.setattr(SpeechToTextService, "_transcribe_cartesia", staticmethod(fake_transcribe))
+    result = SpeechToTextService().transcribe(b"audio-bytes", "test.webm")
+
+    assert result.status == "transcribed"
+    assert result.text == "namaste"
+
+
 def test_elevenlabs_tts_requires_voice_id(monkeypatch) -> None:
     monkeypatch.setenv("TTS_PROVIDER", "elevenlabs")
     monkeypatch.setenv("ELEVENLABS_API_KEY", "demo-key")
@@ -79,6 +105,33 @@ def test_elevenlabs_tts_dispatch(monkeypatch) -> None:
 
     assert result.status == "synthesized"
     assert result.audio_url == "http://test/audio.mp3"
+
+
+def test_cartesia_tts_requires_voice_id(monkeypatch) -> None:
+    monkeypatch.setenv("TTS_PROVIDER", "cartesia")
+    monkeypatch.setenv("CARTESIA_API_KEY", "demo-key")
+    monkeypatch.setenv("CARTESIA_VOICE_ID", "")
+    get_settings.cache_clear()
+
+    result = TextToSpeechService().synthesize("Hello", "en")
+
+    assert result.status == "tts_voice_missing"
+
+
+def test_cartesia_tts_dispatch(monkeypatch) -> None:
+    monkeypatch.setenv("TTS_PROVIDER", "cartesia")
+    monkeypatch.setenv("CARTESIA_API_KEY", "demo-key")
+    monkeypatch.setenv("CARTESIA_VOICE_ID", "voice-id")
+    get_settings.cache_clear()
+
+    def fake_synthesize(*args, **kwargs):
+        return SpeechResult(audio_url="/audio/test.mp3", status="synthesized", detail="ok")
+
+    monkeypatch.setattr(TextToSpeechService, "_synthesize_cartesia", staticmethod(fake_synthesize))
+    result = TextToSpeechService().synthesize("Hello", "en")
+
+    assert result.status == "synthesized"
+    assert result.audio_url == "/audio/test.mp3"
 
 
 def test_elevenlabs_tts_allows_empty_fallback_voice(monkeypatch) -> None:

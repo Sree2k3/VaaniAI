@@ -30,11 +30,22 @@ class Settings(BaseSettings):
     elevenlabs_tts_model: str = "eleven_multilingual_v2"
     elevenlabs_sts_model: str = "eleven_multilingual_sts_v2"
     elevenlabs_output_format: str = "mp3_44100_128"
+    cartesia_api_key: str | None = None
+    cartesia_version: str = "2026-03-01"
+    cartesia_stt_model: str = "ink-whisper"
+    cartesia_tts_model: str = "sonic-3.5"
+    cartesia_voice_id: str | None = None
+    cartesia_output_container: str = "mp3"
+    cartesia_sample_rate: int = 44100
+    cartesia_bit_rate: int = 128000
+    cartesia_speed: float = 1.0
+    cartesia_volume: float = 1.0
 
     gemini_api_key: str | None = None
     llm_provider: str = "stub"
     openrouter_api_key: str | None = None
-    openrouter_model: str = "deepseek/deepseek-chat-v3-0324:free"
+    openrouter_model: str = "openai/gpt-oss-120b"
+    openrouter_temperature: float = 0.35
     voice_agent_polish_replies: bool = False
     vapi_api_key: str | None = None
     vapi_assistant_id: str | None = None

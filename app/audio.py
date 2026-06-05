@@ -57,12 +57,29 @@ class SpeechToTextService:
                 language=settings.stt_language,
             )
 
+        if provider in {"cartesia", "casteria"}:
+            if not settings.cartesia_api_key:
+                return TranscriptionResult(
+                    text="",
+                    language="unknown",
+                    status="stt_credentials_missing",
+                    detail="Missing CARTESIA_API_KEY.",
+                )
+            return self._transcribe_cartesia(
+                audio_bytes=audio_bytes,
+                filename=filename,
+                api_key=settings.cartesia_api_key,
+                version=settings.cartesia_version,
+                model=settings.cartesia_stt_model,
+                language=settings.stt_language,
+            )
+
         if provider != "faster_whisper":
             return TranscriptionResult(
                 text="",
                 language="unknown",
                 status="stt_not_configured",
-                detail="Set STT_PROVIDER=faster_whisper, STT_PROVIDER=groq, or STT_PROVIDER=elevenlabs to enable transcription.",
+                detail="Set STT_PROVIDER=faster_whisper, STT_PROVIDER=groq, STT_PROVIDER=elevenlabs, or STT_PROVIDER=cartesia to enable transcription.",
             )
 
         try:
@@ -189,6 +206,61 @@ class SpeechToTextService:
             status="transcribed" if text else "no_speech_detected",
         )
 
+    @staticmethod
+    def _transcribe_cartesia(
+        audio_bytes: bytes,
+        filename: str | None,
+        api_key: str,
+        version: str,
+        model: str,
+        language: str | None,
+    ) -> TranscriptionResult:
+        fields = {"model": model}
+        if language:
+            fields["language"] = SpeechToTextService._normalize_stt_language(language)
+        payload, content_type = _build_multipart_payload(
+            fields=fields,
+            file_field="file",
+            filename=filename or "audio.webm",
+            file_bytes=audio_bytes,
+        )
+        cartesia_request = request.Request(
+            "https://api.cartesia.ai/stt",
+            data=payload,
+            headers={
+                "Authorization": f"Bearer {api_key}",
+                "Cartesia-Version": version,
+                "Content-Type": content_type,
+            },
+            method="POST",
+        )
+
+        try:
+            with request.urlopen(cartesia_request, timeout=25) as response:
+                response_body = json.loads(response.read().decode())
+        except error.HTTPError as exc:
+            detail = exc.read().decode(errors="replace")
+            return TranscriptionResult(text="", language="unknown", status="stt_failed", detail=detail)
+        except (OSError, json.JSONDecodeError) as exc:
+            return TranscriptionResult(text="", language="unknown", status="stt_failed", detail=str(exc))
+
+        text = (response_body.get("text") or "").strip()
+        detected_language = (response_body.get("language") or "unknown").strip()
+        return TranscriptionResult(
+            text=text,
+            language=detected_language or "unknown",
+            status="transcribed" if text else "no_speech_detected",
+        )
+
+    @staticmethod
+    def _normalize_stt_language(language: str) -> str:
+        normalized = (language or "").lower().strip().replace("_", "-")
+        if normalized in {"hi", "hin", "hindi", "hi-in", "hinglish"}:
+            return "hi"
+        if normalized in {"en", "eng", "english", "en-in", "en-us"}:
+            return "en"
+        return normalized.split("-")[0] or "en"
+
 
 class TextToSpeechService:
     def __init__(self) -> None:
@@ -196,7 +268,8 @@ class TextToSpeechService:
 
     def synthesize(self, text: str, language: str) -> SpeechResult:
         settings = get_settings()
-        if settings.tts_provider.lower() == "elevenlabs":
+        provider = settings.tts_provider.lower().strip()
+        if provider == "elevenlabs":
             if not settings.elevenlabs_api_key:
                 return SpeechResult(
                     audio_url=None,
@@ -221,11 +294,39 @@ class TextToSpeechService:
                 public_base_url=settings.public_base_url,
             )
 
-        if settings.tts_provider.lower() != "xtts":
+        if provider in {"cartesia", "casteria"}:
+            if not settings.cartesia_api_key:
+                return SpeechResult(
+                    audio_url=None,
+                    status="tts_credentials_missing",
+                    detail="Missing CARTESIA_API_KEY.",
+                )
+            if not settings.cartesia_voice_id:
+                return SpeechResult(
+                    audio_url=None,
+                    status="tts_voice_missing",
+                    detail="Set CARTESIA_VOICE_ID to the assistant voice ID.",
+                )
+            return self._synthesize_cartesia(
+                text=text,
+                language=language,
+                api_key=settings.cartesia_api_key,
+                version=settings.cartesia_version,
+                voice_id=settings.cartesia_voice_id,
+                model=settings.cartesia_tts_model,
+                output_container=settings.cartesia_output_container,
+                sample_rate=settings.cartesia_sample_rate,
+                bit_rate=settings.cartesia_bit_rate,
+                speed=settings.cartesia_speed,
+                volume=settings.cartesia_volume,
+                output_dir=settings.generated_audio_dir,
+            )
+
+        if provider != "xtts":
             return SpeechResult(
                 audio_url=None,
                 status="tts_not_configured",
-                detail="Set TTS_PROVIDER=xtts or TTS_PROVIDER=elevenlabs to enable speech generation.",
+                detail="Set TTS_PROVIDER=xtts, TTS_PROVIDER=elevenlabs, or TTS_PROVIDER=cartesia to enable speech generation.",
             )
 
         if not settings.tts_speaker_wav:
@@ -358,6 +459,73 @@ class TextToSpeechService:
         except OSError as exc:
             return SpeechResult(audio_url=None, status="tts_failed", detail=str(exc))
 
+    @staticmethod
+    def _synthesize_cartesia(
+        text: str,
+        language: str,
+        api_key: str,
+        version: str,
+        voice_id: str,
+        model: str,
+        output_container: str,
+        sample_rate: int,
+        bit_rate: int,
+        speed: float,
+        volume: float,
+        output_dir: str,
+    ) -> SpeechResult:
+        container = (output_container or "mp3").lower().strip()
+        output_format: dict[str, object] = {
+            "container": container,
+            "sample_rate": sample_rate,
+        }
+        if container == "mp3":
+            output_format["bit_rate"] = bit_rate
+        elif container in {"wav", "raw"}:
+            output_format["encoding"] = "pcm_s16le"
+
+        payload = json.dumps(
+            {
+                "model_id": model,
+                "transcript": text,
+                "voice": {"id": voice_id.strip()},
+                "output_format": output_format,
+                "language": TextToSpeechService._normalize_language(language),
+                "generation_config": {
+                    "speed": speed,
+                    "volume": volume,
+                },
+            }
+        ).encode()
+        cartesia_request = request.Request(
+            "https://api.cartesia.ai/tts/bytes",
+            data=payload,
+            headers={
+                "Authorization": f"Bearer {api_key}",
+                "Cartesia-Version": version,
+                "Content-Type": "application/json",
+                "Accept": "audio/*",
+            },
+            method="POST",
+        )
+
+        try:
+            with request.urlopen(cartesia_request, timeout=25) as response:
+                audio_bytes = response.read()
+        except error.HTTPError as exc:
+            detail = exc.read().decode(errors="replace")
+            return SpeechResult(audio_url=None, status="tts_failed", detail=detail)
+        except OSError as exc:
+            return SpeechResult(audio_url=None, status="tts_failed", detail=str(exc))
+
+        output_format_name = container
+        output_path = _write_generated_audio(audio_bytes, output_dir, output_format_name)
+        return SpeechResult(
+            audio_url=f"/audio/{output_path.name}",
+            status="synthesized",
+            detail="Speech generated with Cartesia.",
+        )
+
 
 class SpeechToSpeechService:
     def convert(self, audio_bytes: bytes, filename: str | None = None) -> SpeechResult:
@@ -423,7 +591,7 @@ def _build_multipart_payload(
     filename: str,
     file_bytes: bytes,
 ) -> tuple[bytes, str]:
-    boundary = f"----VaaniAIElevenLabsBoundary{uuid4().hex}"
+    boundary = f"----VaaniAIAudioBoundary{uuid4().hex}"
     chunks: list[bytes] = []
     for name, value in fields.items():
         chunks.append(

@@ -12,21 +12,31 @@ services:
       - key: DEMO_MODE
         value: true
       - key: STT_PROVIDER
-        value: elevenlabs
+        value: cartesia
       - key: TTS_PROVIDER
-        value: elevenlabs
-      - key: ELEVENLABS_STT_MODEL
-        value: scribe_v2
-      - key: ELEVENLABS_TTS_MODEL
-        value: eleven_multilingual_v2
-      - key: ELEVENLABS_STS_MODEL
-        value: eleven_multilingual_sts_v2
-      - key: ELEVENLABS_OUTPUT_FORMAT
-        value: mp3_44100_128
+        value: cartesia
+      - key: CARTESIA_VERSION
+        value: 2026-03-01
+      - key: CARTESIA_STT_MODEL
+        value: ink-whisper
+      - key: CARTESIA_TTS_MODEL
+        value: sonic-3.5
+      - key: CARTESIA_OUTPUT_CONTAINER
+        value: mp3
+      - key: CARTESIA_SAMPLE_RATE
+        value: 44100
+      - key: CARTESIA_BIT_RATE
+        value: 128000
+      - key: CARTESIA_SPEED
+        value: 1.0
+      - key: CARTESIA_VOLUME
+        value: 1.0
       - key: LLM_PROVIDER
         value: openrouter
       - key: OPENROUTER_MODEL
-        value: openai/gpt-4o
+        value: openai/gpt-oss-120b
+      - key: OPENROUTER_TEMPERATURE
+        value: 0.35
       - key: VOICE_AGENT_POLISH_REPLIES
         value: true
       - key: SMS_PROVIDER

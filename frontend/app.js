@@ -6,6 +6,7 @@ const state = {
   audioContext: null,
   analyser: null,
   mediaRecorder: null,
+  currentAudio: null,
   chunks: [],
   recognition: null,
   interimTurn: null,
@@ -25,7 +26,13 @@ const state = {
   lastSlotOptions: [],
   selectedSlot: null,
   bookingReview: null,
+  doctors: [],
+  specialistsOpen: false,
+  waitingForRestart: false,
 };
+
+const uiVersion = "20260605-ui-booking-flow-v2";
+console.info(`VaaniAI UI ${uiVersion}`);
 
 const els = {
   voiceOrb: document.getElementById("voiceOrb"),
@@ -43,6 +50,10 @@ const els = {
   stateLabel: document.getElementById("stateLabel"),
   textInput: document.getElementById("textInput"),
   unlockNote: document.getElementById("unlockNote"),
+  specialistToggle: document.getElementById("specialistToggle"),
+  specialistPanel: document.getElementById("specialistPanel"),
+  specialistList: document.getElementById("specialistList"),
+  specialistCount: document.getElementById("specialistCount"),
 };
 
 const greeting = "Hello, I am Vaani from Pawani Medicals. How may I help you today? Please tell me your symptoms or the specialist you would like to see.";
@@ -153,13 +164,6 @@ function formatSlotTime(startTime) {
 
 function renderSlots(slotOptions = [], selectedSlot = null) {
   els.slotCards.innerHTML = "";
-  if (selectedSlot) {
-    const empty = document.createElement("p");
-    empty.className = "empty-text";
-    empty.textContent = "Slot selected. The chosen doctor and time are shown below.";
-    els.slotCards.appendChild(empty);
-    return;
-  }
 
   if (!slotOptions.length) {
     const empty = document.createElement("p");
@@ -172,6 +176,9 @@ function renderSlots(slotOptions = [], selectedSlot = null) {
   slotOptions.forEach((slot) => {
     const card = document.createElement("article");
     card.className = "slot-card";
+    if (selectedSlot && Number(selectedSlot.slot_id) === Number(slot.slot_id)) {
+      card.classList.add("selected");
+    }
 
     const doctor = document.createElement("strong");
     doctor.textContent = slot.doctor_name;
@@ -188,6 +195,54 @@ function renderSlots(slotOptions = [], selectedSlot = null) {
     card.append(doctor, spec, time, code);
     els.slotCards.appendChild(card);
   });
+}
+
+function renderSpecialists() {
+  els.specialistList.innerHTML = "";
+  els.specialistCount.textContent = state.doctors.length ? `${state.doctors.length} doctors` : "No data";
+
+  if (!state.doctors.length) {
+    const empty = document.createElement("p");
+    empty.className = "empty-text";
+    empty.textContent = "Specialist data is not available yet.";
+    els.specialistList.appendChild(empty);
+    return;
+  }
+
+  state.doctors.forEach((doctor) => {
+    const row = document.createElement("article");
+    row.className = "specialist-card";
+
+    const name = document.createElement("strong");
+    name.textContent = doctor.name;
+
+    const spec = document.createElement("span");
+    spec.textContent = doctor.specialization.replace(/\b\w/g, (letter) => letter.toUpperCase());
+
+    row.append(name, spec);
+    els.specialistList.appendChild(row);
+  });
+}
+
+function setSpecialistsOpen(open) {
+  state.specialistsOpen = open;
+  els.specialistPanel.hidden = !open;
+  els.specialistToggle.setAttribute("aria-expanded", String(open));
+}
+
+async function loadSpecialists() {
+  try {
+    const response = await fetch("/doctors", { cache: "no-store" });
+    if (!response.ok) {
+      throw new Error(await response.text());
+    }
+    state.doctors = await response.json();
+    renderSpecialists();
+  } catch (error) {
+    console.error(error);
+    state.doctors = [];
+    renderSpecialists();
+  }
 }
 
 function renderSelectedSlot(slot) {
@@ -255,6 +310,11 @@ function syncBookingPanels(data = {}) {
   }
   if (data.selected_slot) {
     state.selectedSlot = data.selected_slot;
+    const selectedSlotId = Number(data.selected_slot.slot_id);
+    const selectedAlreadyVisible = state.lastSlotOptions.some((slot) => Number(slot.slot_id) === selectedSlotId);
+    if (!selectedAlreadyVisible) {
+      state.lastSlotOptions = [data.selected_slot, ...state.lastSlotOptions];
+    }
   }
   if (data.booking_review) {
     state.bookingReview = data.booking_review;
@@ -299,24 +359,74 @@ function clearVisibleBookingState() {
   updateManualEntry("idle");
 }
 
-async function startFreshSessionAfterBooking() {
-  window.setTimeout(async () => {
-    clearVisibleBookingState();
-    state.callId = `web-${crypto.randomUUID()}`;
-    state.userPhone = "demo";
-    state.lastRecognizedText = "";
-    clearPendingTurn();
-    els.transcriptList.innerHTML = "";
-    state.greetingStarted = false;
-    state.greetingVoiceFinished = false;
+function stopActivePlayback() {
+  if ("speechSynthesis" in window) {
+    window.speechSynthesis.cancel();
+  }
+  if (state.currentAudio) {
+    state.currentAudio.pause();
+    state.currentAudio.src = "";
+    state.currentAudio = null;
+  }
+}
+
+function shutdownVoiceCapture() {
+  pauseListening();
+  if (state.animationFrame) {
+    cancelAnimationFrame(state.animationFrame);
+    state.animationFrame = 0;
+  }
+  if (state.mediaRecorder && state.mediaRecorder.state !== "inactive") {
     try {
-      await startSession();
-      speakAssistant("I'm ready for the next appointment. Please tell me your symptoms or the specialist you would like to see.", resumeListening, { addTranscript: false });
-    } catch (error) {
-      console.error(error);
-      resumeListening();
-    }
-  }, 3200);
+      state.mediaRecorder.onstop = null;
+      state.mediaRecorder.stop();
+    } catch (_error) {}
+  }
+  state.mediaRecorder = null;
+  state.recording = false;
+  state.chunks = [];
+  if (state.audioStream) {
+    state.audioStream.getTracks().forEach((track) => track.stop());
+  }
+  state.audioStream = null;
+  state.analyser = null;
+  if (state.audioContext && state.audioContext.state !== "closed") {
+    state.audioContext.close().catch(() => {});
+  }
+  state.audioContext = null;
+}
+
+function stopAfterBooking() {
+  state.waitingForRestart = true;
+  state.busy = false;
+  state.speaking = false;
+  state.greetingStarted = false;
+  state.greetingVoiceFinished = false;
+  stopActivePlayback();
+  shutdownVoiceCapture();
+  clearPendingTurn();
+  setStatus("Booked");
+  setOrbMode("idle");
+  els.recordHint.textContent = "Click anywhere to start Vaani AI";
+  els.assistantLine.textContent = "Appointment confirmed. Click anywhere to start Vaani AI.";
+  showUnlockHint(true);
+}
+
+async function restartAfterBooking() {
+  if (!state.waitingForRestart) {
+    return;
+  }
+  state.waitingForRestart = false;
+  clearVisibleBookingState();
+  state.callId = `web-${crypto.randomUUID()}`;
+  state.userPhone = "demo";
+  state.lastRecognizedText = "";
+  clearPendingTurn();
+  els.transcriptList.innerHTML = "";
+  state.unlocked = false;
+  await startSession();
+  await initMicrophone();
+  await unlockVoiceExperience();
 }
 
 function getAudioMimeType() {
@@ -405,6 +515,9 @@ function chooseVoice() {
 }
 
 function handleAssistantAudioFailure(message, afterSpeak = resumeListening) {
+  if (state.waitingForRestart) {
+    return;
+  }
   setStatus("Voice setup issue", "error");
   els.recordHint.textContent = message;
   showUnlockHint(true);
@@ -493,25 +606,32 @@ function playBackendAudio(tts, fallbackText, afterSpeak = resumeListening, optio
   setStatus("Speaking");
   setOrbMode("speaking");
   const audio = new Audio(tts.audio_url);
+  state.currentAudio = audio;
   audio.preload = "auto";
   audio.volume = 1;
   audio.onended = () => {
+    state.currentAudio = null;
     state.speaking = false;
     state.unlocked = true;
     showUnlockHint(false);
     afterSpeak();
   };
   audio.onerror = () => {
+    state.currentAudio = null;
     state.speaking = false;
     handleAssistantAudioFailure("Backend audio was generated but could not play. Click once and try again.", afterSpeak);
   };
   audio.play().catch(() => {
+    state.currentAudio = null;
     state.speaking = false;
     handleAssistantAudioFailure("Browser blocked audio playback. Click once and try again.", afterSpeak);
   });
 }
 
 function applyVoiceTurn(payload) {
+  if (state.waitingForRestart) {
+    return;
+  }
   if (payload.stt_text) {
     commitUserTurn(payload.stt_text);
   } else if (state.lastRecognizedText) {
@@ -543,16 +663,19 @@ function applyVoiceTurn(payload) {
   updateManualEntry(chat.next_state || "idle");
   syncBookingPanels(chat);
   renderSuccess(chat);
-  const afterSpeak = chat.next_state === "booked" ? startFreshSessionAfterBooking : resumeListening;
+  const afterSpeak = chat.next_state === "booked" ? stopAfterBooking : resumeListening;
   playBackendAudio(payload.tts, chat.reply, afterSpeak);
 }
 
 function applyTextChat(chat) {
+  if (state.waitingForRestart) {
+    return;
+  }
   els.stateLabel.textContent = chat.next_state || "idle";
   updateManualEntry(chat.next_state || "idle");
   syncBookingPanels(chat);
   renderSuccess(chat);
-  const afterSpeak = chat.next_state === "booked" ? startFreshSessionAfterBooking : resumeListening;
+  const afterSpeak = chat.next_state === "booked" ? stopAfterBooking : resumeListening;
   speakAssistant(chat.reply, afterSpeak);
 }
 
@@ -562,6 +685,9 @@ function pauseListening() {
 }
 
 function resumeListening() {
+  if (state.waitingForRestart) {
+    return;
+  }
   if (!state.audioStream) {
     return;
   }
@@ -573,7 +699,7 @@ function resumeListening() {
 }
 
 function startRecorder() {
-  if (state.recording || state.busy || state.speaking || !state.audioStream) {
+  if (state.waitingForRestart || state.recording || state.busy || state.speaking || !state.audioStream) {
     return;
   }
 
@@ -611,6 +737,9 @@ function stopRecorder() {
 }
 
 async function sendVoiceTurn(blob, mimeType) {
+  if (state.waitingForRestart) {
+    return;
+  }
   if (!blob.size) {
     resumeListening();
     return;
@@ -663,6 +792,9 @@ async function sendVoiceTurn(blob, mimeType) {
 }
 
 function monitorAudioLevel() {
+  if (state.waitingForRestart) {
+    return;
+  }
   if (!state.analyser) {
     return;
   }
@@ -734,6 +866,10 @@ async function initMicrophone() {
 }
 
 async function sendTextToBackend(message, options = {}) {
+  if (state.waitingForRestart) {
+    await restartAfterBooking();
+    return;
+  }
   const { alreadyCommitted = false } = options;
   if (!message.trim() || state.busy) {
     return;
@@ -790,6 +926,10 @@ async function startSession() {
 }
 
 async function unlockVoiceExperience() {
+  if (state.waitingForRestart) {
+    await restartAfterBooking();
+    return;
+  }
   if (state.unlocked) {
     return;
   }
@@ -816,8 +956,21 @@ function bindAudioUnlock() {
       showUnlockHint(true);
     });
   };
-  window.addEventListener("pointerdown", unlock, { once: true });
-  window.addEventListener("keydown", unlock, { once: true });
+  window.addEventListener("pointerdown", unlock);
+  window.addEventListener("keydown", unlock);
+}
+
+function bindSpecialistToggle() {
+  const toggle = () => {
+    setSpecialistsOpen(!state.specialistsOpen);
+  };
+  els.specialistToggle.addEventListener("click", toggle);
+  els.specialistToggle.addEventListener("keydown", (event) => {
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      toggle();
+    }
+  });
 }
 
 function bindTypedFallback() {
@@ -838,6 +991,8 @@ function bindTypedFallback() {
 async function boot() {
   bindAudioUnlock();
   bindTypedFallback();
+  bindSpecialistToggle();
+  loadSpecialists();
   try {
     await startSession();
     await initMicrophone();

@@ -31,7 +31,9 @@ def use_in_memory_database():
 def test_root_and_dashboard_contracts() -> None:
     with TestClient(app) as client:
         assert client.get("/").json()["name"] == "VaaniAI Backend"
-        assert client.get("/app").status_code == 200
+        app_response = client.get("/app")
+        assert app_response.status_code == 200
+        assert app_response.headers["cache-control"].startswith("no-store")
         assert client.post("/demo/seed").json() == {"status": "seeded"}
 
         metrics = client.get("/dashboard/metrics").json()
@@ -208,6 +210,23 @@ def test_doctors_include_symptoms_column() -> None:
         specializations = {doctor["specialization"] for doctor in doctors}
         assert "chest pain" in cardiologist["symptoms"]
         assert {"neurologist", "orthopedic", "ophthalmologist", "pulmonologist"}.issubset(specializations)
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_demo_seed_creates_twenty_slots_per_doctor() -> None:
+    use_in_memory_database()
+    try:
+        with TestClient(app) as client:
+            doctors = client.get("/doctors").json()
+            slots = client.get("/available-slots").json()
+
+        counts_by_doctor_id = {}
+        for slot in slots:
+            counts_by_doctor_id[slot["doctor_id"]] = counts_by_doctor_id.get(slot["doctor_id"], 0) + 1
+
+        assert len(doctors) == 13
+        assert all(counts_by_doctor_id[doctor["id"]] == 20 for doctor in doctors)
     finally:
         app.dependency_overrides.clear()
 

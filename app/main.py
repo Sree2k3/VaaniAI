@@ -80,7 +80,13 @@ def web_app() -> FileResponse:
     index_path = Path("frontend/index.html")
     if not index_path.exists():
         raise HTTPException(status_code=404, detail="frontend is not available")
-    return FileResponse(index_path)
+    return FileResponse(
+        index_path,
+        headers={
+            "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+            "Pragma": "no-cache",
+        },
+    )
 
 
 @app.get("/health", response_model=HealthResponse)
@@ -93,21 +99,38 @@ def health(session: Session = Depends(get_session)) -> HealthResponse:
 def diagnostics_config() -> dict[str, object]:
     runtime_settings = get_settings()
     generated_audio_dir = Path(runtime_settings.generated_audio_dir)
+    stt_provider = runtime_settings.stt_provider.lower().strip()
+    tts_provider = runtime_settings.tts_provider.lower().strip()
     return {
         "app": runtime_settings.app_name,
         "demo_mode": runtime_settings.demo_mode,
         "database": "configured" if runtime_settings.database_url else "missing",
         "public_base_url": runtime_settings.public_base_url,
         "stt_provider": runtime_settings.stt_provider,
-        "stt_ready": runtime_settings.stt_provider.lower() != "elevenlabs" or bool(runtime_settings.elevenlabs_api_key),
+        "stt_ready": (
+            (stt_provider not in {"elevenlabs", "cartesia", "casteria"})
+            or (stt_provider == "elevenlabs" and bool(runtime_settings.elevenlabs_api_key))
+            or (stt_provider in {"cartesia", "casteria"} and bool(runtime_settings.cartesia_api_key))
+        ),
         "tts_provider": runtime_settings.tts_provider,
         "tts_ready": (
-            runtime_settings.tts_provider.lower() != "elevenlabs"
-            or bool(runtime_settings.elevenlabs_api_key and runtime_settings.elevenlabs_voice_id)
+            (tts_provider not in {"elevenlabs", "cartesia", "casteria"})
+            or (
+                tts_provider == "elevenlabs"
+                and bool(runtime_settings.elevenlabs_api_key and runtime_settings.elevenlabs_voice_id)
+            )
+            or (
+                tts_provider in {"cartesia", "casteria"}
+                and bool(runtime_settings.cartesia_api_key and runtime_settings.cartesia_voice_id)
+            )
         ),
         "elevenlabs_api_key_set": bool(runtime_settings.elevenlabs_api_key),
         "elevenlabs_voice_id_set": bool(runtime_settings.elevenlabs_voice_id),
+        "cartesia_api_key_set": bool(runtime_settings.cartesia_api_key),
+        "cartesia_voice_id_set": bool(runtime_settings.cartesia_voice_id),
         "llm_provider": runtime_settings.llm_provider,
+        "openrouter_model": runtime_settings.openrouter_model,
+        "openrouter_temperature": runtime_settings.openrouter_temperature,
         "openrouter_key_set": bool(runtime_settings.openrouter_api_key),
         "sms_provider": runtime_settings.sms_provider,
         "fast2sms_key_set": bool(runtime_settings.fast2sms_api_key),

@@ -107,14 +107,14 @@ Mode B: Single-turn orchestration (recommended)
 ==================================================
 
 Configured target stack:
-- STT: ElevenLabs
-- TTS: ElevenLabs
-- Optional speech-to-speech: ElevenLabs
+- STT: Cartesia
+- TTS: Cartesia
+- Optional speech-to-speech: ElevenLabs legacy endpoint
 - LLM fallback/inquiry: OpenRouter
 - Voice-agent response polishing: OpenRouter, gated by backend safety rules
 - SMS: Fast2SMS
 - Calendar sync: optional Google Calendar
-- Legacy/local fallback options: Groq STT, Faster-Whisper STT, XTTS TTS, stub providers
+- Legacy/local fallback options: ElevenLabs STT/TTS, Groq STT, Faster-Whisper STT, XTTS TTS, stub providers
 
 Production-grade authentication and persistent/distributed rate limiting are not required for this demo MVP.
 The current optional API key and in-memory rate limiter are sufficient as demo safeguards.
@@ -135,17 +135,21 @@ CLINIC_NAME="Pawani Medicals"
 
 LLM_PROVIDER=openrouter
 OPENROUTER_API_KEY=...
-OPENROUTER_MODEL=openai/gpt-4o
+OPENROUTER_MODEL=openai/gpt-oss-120b
 VOICE_AGENT_POLISH_REPLIES=true
 
-STT_PROVIDER=elevenlabs
-TTS_PROVIDER=elevenlabs
-ELEVENLABS_API_KEY=...
-ELEVENLABS_VOICE_ID=...
-ELEVENLABS_STT_MODEL=scribe_v2
-ELEVENLABS_TTS_MODEL=eleven_multilingual_v2
-ELEVENLABS_STS_MODEL=eleven_multilingual_sts_v2
-ELEVENLABS_OUTPUT_FORMAT=mp3_44100_128
+STT_PROVIDER=cartesia
+TTS_PROVIDER=cartesia
+CARTESIA_API_KEY=...
+CARTESIA_VERSION=2026-03-01
+CARTESIA_STT_MODEL=ink-whisper
+CARTESIA_TTS_MODEL=sonic-3.5
+CARTESIA_VOICE_ID=...
+CARTESIA_OUTPUT_CONTAINER=mp3
+CARTESIA_SAMPLE_RATE=44100
+CARTESIA_BIT_RATE=128000
+CARTESIA_SPEED=1.0
+CARTESIA_VOLUME=1.0
 
 # Optional Google Calendar sync
 CALENDAR_PROVIDER=disabled
@@ -196,8 +200,8 @@ Startup migration logic is implemented to add new columns safely on existing SQL
 [x] Appointment persistence and slot locking
 [x] Fast2SMS integration and notification logs
 [x] Optional Google Calendar event sync hook
-[x] ElevenLabs STT integration
-[x] ElevenLabs TTS integration
+[x] Cartesia STT integration
+[x] Cartesia TTS integration
 [x] Optional ElevenLabs speech-to-speech endpoint
 [x] Legacy Groq STT integration
 [x] OpenRouter integration for inquiry/fallback replies
@@ -221,7 +225,7 @@ Startup migration logic is implemented to add new columns safely on existing SQL
 [x] Persistent slot options until selection
 [x] Persistent booking review until confirmation/correction
 
-[ ] Live provider testing with real ElevenLabs, OpenRouter, and Fast2SMS keys
+[ ] Live provider testing with real Cartesia, OpenRouter, and Fast2SMS keys
 [ ] Deployment/hosting configuration for public demo link
 [ ] MCP-based hosting/integration layer, if selected for final demo deployment
 [ ] Optional telephony transport layer
@@ -237,7 +241,7 @@ Not required for demo MVP:
 ==================================================
 
 Latest run:
-- `pytest -q` -> 45 passed, 0 failed
+- `pytest -q` -> 51 passed, 0 failed
 
 Covered by tests:
 - booking conversation transitions
@@ -245,7 +249,7 @@ Covered by tests:
 - patient data collection flow
 - notification creation
 - STT endpoint behavior
-- ElevenLabs STT/TTS provider dispatch and credential checks
+- Cartesia and ElevenLabs STT/TTS provider dispatch and credential checks
 - voice-agent polishing and safety bypass for slot lists
 - voice-turn orchestration endpoint
 - session start/read/reset contracts
@@ -283,7 +287,7 @@ Recommended frontend flow:
 13. After the confirmation moment, clear visible booking details and start a fresh idle session automatically.
 
 Live MVP test path:
-- `mic audio -> /voice/turn -> ElevenLabs STT -> booking state machine/OpenRouter fallback -> ElevenLabs TTS -> appointment DB save -> Fast2SMS SMS -> frontend success state`
+- `mic audio -> /voice/turn -> Cartesia STT -> booking state machine/OpenRouter fallback -> Cartesia TTS -> appointment DB save -> Fast2SMS SMS -> frontend success state`
 
 Current frontend status:
 - implemented as static files in `frontend/`
@@ -304,7 +308,7 @@ Hosting is the next major step after final local provider testing.
 Required host configuration:
 - set `PUBLIC_BASE_URL` to the hosted HTTPS URL,
 - set `DATABASE_URL` to the selected hosted database,
-- configure ElevenLabs, OpenRouter, and Fast2SMS secrets,
+- configure Cartesia, OpenRouter, and Fast2SMS secrets,
 - keep generated audio and secret JSON files out of git,
 - enable Google Calendar only when credentials and calendar sharing are ready.
 
@@ -320,7 +324,7 @@ Final hosting checklist:
 [ ] Configure HTTPS public URL
 [ ] Run `pytest -q`
 [ ] Run one complete hosted booking flow
-[ ] Verify ElevenLabs STT/TTS from hosted browser
+[ ] Verify Cartesia STT/TTS from hosted browser
 [ ] Verify Fast2SMS confirmation
 [ ] Verify optional Google Calendar event creation, if enabled
 [ ] Confirm `/app`, `/health`, `/docs`, `/voice/turn`, `/notifications` work on hosted URL

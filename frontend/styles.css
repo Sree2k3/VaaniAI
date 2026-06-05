@@ -296,6 +296,20 @@ h2 {
   padding: 13px 14px;
 }
 
+.insight-action {
+  cursor: pointer;
+  transition: transform 160ms ease, border-color 160ms ease, background 160ms ease;
+}
+
+.insight-action:hover,
+.insight-action:focus-visible {
+  transform: translateY(-1px);
+  border-color: rgba(125, 214, 255, 0.34);
+  background:
+    linear-gradient(180deg, rgba(125, 214, 255, 0.08), rgba(255, 255, 255, 0.025));
+  outline: none;
+}
+
 .insight-row strong,
 .insight-row span {
   display: block;
@@ -313,6 +327,77 @@ h2 {
   margin-top: 3px;
   color: var(--muted);
   font-size: 12px;
+}
+
+.specialist-panel {
+  position: relative;
+  z-index: 2;
+  margin: 12px 26px 0;
+  border: 1px solid rgba(125, 214, 255, 0.18);
+  border-radius: 22px;
+  background:
+    linear-gradient(145deg, rgba(125, 214, 255, 0.07), transparent 48%),
+    rgba(9, 13, 16, 0.94);
+  box-shadow: var(--shadow-soft);
+  padding: 15px;
+}
+
+.specialist-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.specialist-panel-header p {
+  color: var(--soft);
+  font-size: 13px;
+  font-weight: 850;
+}
+
+.specialist-panel-header span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 750;
+}
+
+.specialist-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 9px;
+  max-height: 230px;
+  overflow: auto;
+  padding-right: 2px;
+}
+
+.specialist-card {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.04);
+  padding: 11px 12px;
+}
+
+.specialist-card strong,
+.specialist-card span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.specialist-card strong {
+  color: var(--text);
+  font-size: 13px;
+}
+
+.specialist-card span {
+  color: var(--cyan);
+  font-size: 12px;
+  font-weight: 750;
 }
 
 .orb-wrap {
@@ -611,6 +696,22 @@ h2 {
   background:
     linear-gradient(145deg, rgba(125, 214, 255, 0.075), transparent 50%),
     var(--surface-3);
+}
+
+.slot-card.selected {
+  border-color: rgba(255, 255, 255, 0.86);
+  background:
+    linear-gradient(145deg, rgba(255, 255, 255, 0.1), transparent 50%),
+    linear-gradient(180deg, rgba(74, 222, 159, 0.08), rgba(125, 214, 255, 0.04)),
+    var(--surface-3);
+  box-shadow:
+    0 0 0 1px rgba(255, 255, 255, 0.34),
+    0 18px 46px rgba(0, 0, 0, 0.3);
+}
+
+.slot-card.selected code {
+  border-color: rgba(255, 255, 255, 0.58);
+  color: var(--text);
 }
 
 .slot-card::before {
@@ -937,6 +1038,14 @@ h2 {
   .insight-row {
     grid-template-columns: 1fr;
     margin: 12px 18px 0;
+  }
+
+  .specialist-panel {
+    margin: 12px 18px 0;
+  }
+
+  .specialist-list {
+    grid-template-columns: 1fr;
   }
 
   .orb-wrap {

@@ -28,6 +28,7 @@ class LlmService:
             api_key=settings.openrouter_api_key,
             model=settings.openrouter_model,
             prompt=prompt,
+            temperature=settings.openrouter_temperature,
         )
 
     def polish_voice_reply(
@@ -55,7 +56,7 @@ class LlmService:
                 "You are Vaani, a warm receptionist at Pawani Medicals. Rewrite assistant replies for fluent spoken "
                 "delivery in English without changing facts, slots, booking details, names, phone numbers, or required next actions."
             ),
-            temperature=0.35,
+            temperature=settings.openrouter_temperature,
         )
 
     @staticmethod
@@ -99,6 +100,7 @@ class LlmService:
         system_message: str = "You are Vaani, a concise receptionist at Pawani Medicals.",
         temperature: float = 0.2,
     ) -> LlmResult:
+        temperature = max(0.0, min(float(temperature), 2.0))
         payload = {
             "model": model,
             "messages": [

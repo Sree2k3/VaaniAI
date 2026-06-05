@@ -3,8 +3,9 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta http-equiv="Cache-Control" content="no-store">
     <title>VaaniAI Voice Receptionist</title>
-    <link rel="stylesheet" href="/static/styles.css?v=20260523-credit1">
+    <link rel="stylesheet" href="/static/styles.css?v=20260605-ui-booking-flow">
   </head>
   <body>
     <div class="ambient-frame" aria-hidden="true">
@@ -35,7 +36,7 @@
         </div>
 
         <div class="insight-row" aria-label="Assistant capabilities">
-          <div>
+          <div class="insight-action" id="specialistToggle" role="button" tabindex="0" aria-expanded="false" aria-controls="specialistPanel">
             <strong>13</strong>
             <span>Specialties</span>
           </div>
@@ -48,6 +49,14 @@
             <span>Confirmation</span>
           </div>
         </div>
+
+        <section class="specialist-panel" id="specialistPanel" hidden aria-label="Available specialists">
+          <div class="specialist-panel-header">
+            <p>Available doctors</p>
+            <span id="specialistCount">Loading</span>
+          </div>
+          <div class="specialist-list" id="specialistList"></div>
+        </section>
 
         <div class="orb-wrap">
           <div class="voice-orb listening" id="voiceOrb" role="img" aria-label="VaaniAI voice status" tabindex="0">
@@ -145,6 +154,6 @@
       </a>
     </footer>
 
-    <script src="/static/app.js?v=20260523-credit1"></script>
+    <script src="/static/app.js?v=20260605-ui-booking-flow"></script>
   </body>
 </html>

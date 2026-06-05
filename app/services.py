@@ -211,6 +211,21 @@ DEMO_DOCTOR_CATALOG = [
     ("Dr. Omar Khan", "pulmonologist", ["en", "hi"]),
 ]
 
+DEMO_SLOT_TIMES = [
+    time(9, 0),
+    time(10, 0),
+    time(11, 0),
+    time(12, 0),
+    time(13, 0),
+    time(14, 0),
+    time(15, 0),
+    time(16, 0),
+    time(17, 0),
+    time(18, 0),
+]
+DEMO_SLOT_DAY_OFFSETS = [1, 2]
+SLOT_OPTIONS_LIMIT = 20
+
 
 def get_or_create_user(session: Session, phone: str, language: str) -> User:
     user = session.exec(select(User).where(User.phone == phone)).first()
@@ -1177,7 +1192,7 @@ def normalize_spelled_name(words: list[str]) -> str:
 
 def build_slot_options(slots: list[SlotRead]) -> list[SlotOption]:
     options: list[SlotOption] = []
-    for slot in slots[:8]:
+    for slot in slots[:SLOT_OPTIONS_LIMIT]:
         options.append(
             SlotOption(
                 slot_id=slot.id,
@@ -1357,15 +1372,23 @@ def seed_demo_data(session: Session) -> None:
     session.commit()
     doctors = session.exec(select(Doctor).where(Doctor.active == True).order_by(Doctor.id)).all()
 
-    tomorrow = datetime.combine(datetime.now(timezone.utc).date() + timedelta(days=1), time(10, 0), tzinfo=timezone.utc)
     slots: list[Slot] = []
     for doctor in doctors:
-        for start_time in [tomorrow, tomorrow.replace(hour=16)]:
-            existing_slot = session.exec(
-                select(Slot).where(and_(Slot.doctor_id == doctor.id, Slot.start_time == start_time))
-            ).first()
-            if not existing_slot:
-                slots.append(Slot(doctor_id=doctor.id, start_time=start_time, end_time=start_time + timedelta(minutes=30)))
+        for day_offset in DEMO_SLOT_DAY_OFFSETS:
+            slot_date = datetime.now(timezone.utc).date() + timedelta(days=day_offset)
+            for slot_time in DEMO_SLOT_TIMES:
+                start_time = datetime.combine(slot_date, slot_time, tzinfo=timezone.utc)
+                existing_slot = session.exec(
+                    select(Slot).where(and_(Slot.doctor_id == doctor.id, Slot.start_time == start_time))
+                ).first()
+                if not existing_slot:
+                    slots.append(
+                        Slot(
+                            doctor_id=doctor.id,
+                            start_time=start_time,
+                            end_time=start_time + timedelta(minutes=30),
+                        )
+                    )
     if slots:
         session.add_all(slots)
         session.commit()
