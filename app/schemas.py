@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import date, datetime
 from typing import Optional
 
 from pydantic import BaseModel
@@ -45,9 +45,16 @@ class SessionStateResponse(BaseModel):
 
 class SlotOption(BaseModel):
     slot_id: int
+    availability_id: int
     doctor_name: str
     specialization: str
+    available_date: date
     start_time: datetime
+    end_time: datetime
+    max_patients: int
+    booked_count: int
+    remaining_slots: int
+    fully_booked: bool
     label: str
 
 
@@ -59,6 +66,7 @@ class BookingReview(BaseModel):
     doctor_name: str
     specialization: str
     slot_time: str
+    token_number: Optional[int] = None
 
 
 class ChatResponse(BaseModel):
@@ -83,15 +91,33 @@ class BookingResponse(BaseModel):
     appointment_id: int
     status: str
     notification_status: Optional[str] = None
+    token_number: Optional[int] = None
+
+
+class SmsTestRequest(BaseModel):
+    phone: str
+    message: str = "VaaniAI SMS test from Pawani Medicals."
+
+
+class SmsTestResponse(BaseModel):
+    status: str
+    provider_message_id: Optional[str] = None
+    detail: str = ""
 
 
 class SlotRead(BaseModel):
     id: int
+    availability_id: int
     doctor_id: int
     doctor_name: str
     specialization: str
+    available_date: date
     start_time: datetime
     end_time: datetime
+    max_patients: int
+    booked_count: int
+    remaining_slots: int
+    fully_booked: bool
 
 
 class DoctorRead(BaseModel):

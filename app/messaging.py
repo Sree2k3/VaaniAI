@@ -130,10 +130,11 @@ class SmsService:
 
         fast2sms_request = request.Request(
             url,
-            data=json.dumps(payload).encode(),
+            data=parse.urlencode(payload).encode(),
             headers={
                 "authorization": api_key,
-                "Content-Type": "application/json",
+                "Content-Type": "application/x-www-form-urlencoded",
+                "Accept": "application/json",
             },
             method="POST",
         )
@@ -148,7 +149,10 @@ class SmsService:
             return MessageResult(status="sms_failed", detail=str(exc))
 
         if not response_body.get("return", False):
-            return MessageResult(status="sms_failed", detail=response_body.get("message", "Fast2SMS rejected request."))
+            return MessageResult(
+                status="sms_failed",
+                detail=_stringify_fast2sms_message(response_body.get("message", "Fast2SMS rejected request.")),
+            )
 
         request_id = None
         request_ids = response_body.get("request_id")
@@ -158,6 +162,14 @@ class SmsService:
             request_id = request_ids
 
         return MessageResult(status="sms_sent", provider_message_id=request_id, detail="SMS sent.")
+
+
+def _stringify_fast2sms_message(value: object) -> str:
+    if isinstance(value, list):
+        return "; ".join(str(item) for item in value)
+    if isinstance(value, dict):
+        return json.dumps(value)
+    return str(value)
 
 
 sms_service = SmsService()

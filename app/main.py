@@ -22,6 +22,8 @@ from app.schemas import (
     RecentBooking,
     SessionStartRequest,
     SessionStateResponse,
+    SmsTestRequest,
+    SmsTestResponse,
     SlotRead,
     TranscriptRead,
     TTSRequest,
@@ -48,6 +50,7 @@ from app.services import (
     send_booking_confirmation,
     start_or_resume_session,
 )
+from app.messaging import sms_service
 
 
 @asynccontextmanager
@@ -192,6 +195,7 @@ def create_booking(
         appointment_id=appointment.id,
         status=appointment.status.value,
         notification_status=notification.status,
+        token_number=appointment.token_number,
     )
 
 
@@ -250,6 +254,24 @@ def transcripts(call_id: str | None = None, limit: int = 10, session: Session = 
 @app.get("/notifications", response_model=list[NotificationRead])
 def notifications(limit: int = 20, session: Session = Depends(get_session)) -> list:
     return list_notifications(session, limit)
+
+
+@app.post("/sms/test", response_model=SmsTestResponse)
+def test_sms(
+    request: SmsTestRequest,
+    _: None = Depends(require_api_key),
+    __: None = Depends(rate_limit),
+) -> SmsTestResponse:
+    result = sms_service.send_sms(request.phone, request.message)
+    print(
+        f"sms_test status={result.status} provider_id={result.provider_message_id} detail={result.detail[:200]}",
+        flush=True,
+    )
+    return SmsTestResponse(
+        status=result.status,
+        provider_message_id=result.provider_message_id,
+        detail=result.detail,
+    )
 
 
 @app.post("/transcribe", response_model=TranscriptionResponse)

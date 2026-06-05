@@ -3,8 +3,8 @@ from sqlmodel.pool import StaticPool
 
 from app.config import get_settings
 from app.llm import LlmResult
-from app.models import Appointment, ConversationState, NotificationLog, Slot
-from app.services import handle_chat, maybe_polish_voice_reply, parse_name_from_state_input, seed_demo_data
+from app.models import Appointment, ConversationState, DoctorAvailability, NotificationLog, User
+from app.services import book_appointment, handle_chat, maybe_polish_voice_reply, parse_name_from_state_input, seed_demo_data
 
 
 def make_session() -> Session:
@@ -83,7 +83,7 @@ def test_slot_hint_selects_requested_hour(monkeypatch) -> None:
     session = make_session()
 
     handle_chat(session, "call-2", "8888888888", "I need a skin doctor appointment", "en")
-    handle_chat(session, "call-2", "8888888888", "Tomorrow 4 pm", "en")
+    handle_chat(session, "call-2", "8888888888", "Tomorrow 10 am", "en")
     handle_chat(session, "call-2", "8888888888", "My name is Emily", "en")
     handle_chat(session, "call-2", "8888888888", "yes", "en")
     handle_chat(session, "call-2", "8888888888", "female", "en")
@@ -92,10 +92,72 @@ def test_slot_hint_selects_requested_hour(monkeypatch) -> None:
     result = handle_chat(session, "call-2", "8888888888", "Confirm", "en")
 
     appointment = session.get(Appointment, result.appointment_id)
-    slot = session.get(Slot, appointment.slot_id)
+    availability = session.get(DoctorAvailability, appointment.availability_id)
 
     assert result.next_state == ConversationState.booked
-    assert slot.start_time.hour == 16
+    assert availability.start_time.hour == 10
+    assert availability.end_time.hour == 23
+    assert appointment.token_number == 1
+
+
+def test_availability_can_be_selected_by_option_date_or_time_window(monkeypatch) -> None:
+    monkeypatch.setenv("SMS_PROVIDER", "stub")
+    get_settings.cache_clear()
+
+    session_by_option = make_session()
+    handle_chat(session_by_option, "call-option", "8111111111", "I need an ENT specialist", "en")
+    option_result = handle_chat(session_by_option, "call-option", "8111111111", "first option", "en")
+    assert option_result.next_state == ConversationState.collect_name
+    assert option_result.selected_slot is not None
+    assert option_result.selected_slot.available_date.isoformat() == "2026-06-06"
+
+    session_by_date = make_session()
+    handle_chat(session_by_date, "call-date", "8111111112", "I need an ENT specialist", "en")
+    date_result = handle_chat(session_by_date, "call-date", "8111111112", "June 8", "en")
+    assert date_result.next_state == ConversationState.collect_name
+    assert date_result.selected_slot is not None
+    assert date_result.selected_slot.available_date.isoformat() == "2026-06-08"
+
+    session_by_time = make_session()
+    handle_chat(session_by_time, "call-time", "8111111113", "I need an ENT specialist", "en")
+    time_result = handle_chat(session_by_time, "call-time", "8111111113", "3 pm", "en")
+    assert time_result.next_state == ConversationState.collect_name
+    assert time_result.selected_slot is not None
+
+
+def test_availability_tokens_increment_and_capacity_blocks(monkeypatch) -> None:
+    monkeypatch.setenv("SMS_PROVIDER", "stub")
+    get_settings.cache_clear()
+    session = make_session()
+
+    availability = session.exec(select(DoctorAvailability)).first()
+    availability.max_patients = 2
+    session.add(availability)
+    session.commit()
+
+    first_user = User(phone="7000000001")
+    second_user = User(phone="7000000002")
+    third_user = User(phone="7000000003")
+    session.add(first_user)
+    session.add(second_user)
+    session.add(third_user)
+    session.commit()
+    session.refresh(first_user)
+    session.refresh(second_user)
+    session.refresh(third_user)
+
+    first = book_appointment(session, first_user.id, availability.doctor_id, availability.id)
+    second = book_appointment(session, second_user.id, availability.doctor_id, availability.id)
+
+    assert first.token_number == 1
+    assert second.token_number == 2
+
+    try:
+        book_appointment(session, third_user.id, availability.doctor_id, availability.id)
+    except Exception as exc:
+        assert "fully booked" in str(exc).lower()
+    else:
+        raise AssertionError("Expected full availability to reject the booking")
 
 
 def test_unclear_reply_preserves_active_booking_state(monkeypatch) -> None:
@@ -118,7 +180,7 @@ def test_voice_transcript_style_detail_collection(monkeypatch) -> None:
     session = make_session()
 
     handle_chat(session, "call-voice", "8666666666", "I am having chest pain", "en")
-    handle_chat(session, "call-voice", "8666666666", "I want Sunday May 24th 4:00 PM", "en")
+    handle_chat(session, "call-voice", "8666666666", "I want tomorrow 10:00 AM", "en")
     name = handle_chat(session, "call-voice", "8666666666", "श्रीकांत पटनायक", "hi")
     name_confirm = handle_chat(session, "call-voice", "8666666666", "हाँ", "hi")
     gender = handle_chat(session, "call-voice", "8666666666", "M A L E", "en")

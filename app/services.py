@@ -1,6 +1,6 @@
 import re
 import unicodedata
-from datetime import datetime, time, timedelta, timezone
+from datetime import date, datetime, time, timedelta, timezone
 
 from fastapi import HTTPException
 from sqlalchemy import delete, func
@@ -18,6 +18,7 @@ from app.models import (
     CallOutcome,
     ConversationState,
     Doctor,
+    DoctorAvailability,
     NotificationLog,
     Slot,
     Speaker,
@@ -212,18 +213,16 @@ DEMO_DOCTOR_CATALOG = [
 ]
 
 DEMO_SLOT_TIMES = [
-    time(9, 0),
     time(10, 0),
-    time(11, 0),
-    time(12, 0),
-    time(13, 0),
-    time(14, 0),
-    time(15, 0),
-    time(16, 0),
-    time(17, 0),
-    time(18, 0),
 ]
-DEMO_SLOT_DAY_OFFSETS = [1, 2]
+DEMO_AVAILABILITY_END_TIME = time(23, 0)
+DEMO_SLOT_DATES = [
+    date(2026, 6, 6),
+    date(2026, 6, 7),
+    date(2026, 6, 8),
+    date(2026, 6, 9),
+]
+DEFAULT_MAX_PATIENTS_PER_AVAILABILITY = 50
 SLOT_OPTIONS_LIMIT = 20
 
 
@@ -265,28 +264,70 @@ def list_doctors(session: Session) -> list[Doctor]:
     return list(session.exec(select(Doctor).where(Doctor.active == True).order_by(Doctor.name)).all())
 
 
+def availability_start_datetime(availability: DoctorAvailability) -> datetime:
+    return datetime.combine(availability.available_date, availability.start_time, tzinfo=timezone.utc)
+
+
+def availability_end_datetime(availability: DoctorAvailability) -> datetime:
+    return datetime.combine(availability.available_date, availability.end_time, tzinfo=timezone.utc)
+
+
+def count_availability_bookings(session: Session, availability_id: int) -> int:
+    return session.exec(
+        select(func.count(Appointment.id)).where(Appointment.availability_id == availability_id)
+    ).one()
+
+
+def get_next_token_number(session: Session, availability_id: int, max_patients: int) -> int | None:
+    used_tokens = session.exec(
+        select(Appointment.token_number)
+        .where(Appointment.availability_id == availability_id)
+        .order_by(Appointment.token_number)
+    ).all()
+    used = {token for token in used_tokens if token is not None}
+    for token_number in range(1, max_patients + 1):
+        if token_number not in used:
+            return token_number
+    return None
+
+
 def list_available_slots(session: Session, specialization: str | None = None) -> list[SlotRead]:
     statement = (
-        select(Slot, Doctor)
-        .join(Doctor, Slot.doctor_id == Doctor.id)
-        .where(and_(Slot.is_booked == False, Slot.start_time > datetime.now(timezone.utc), Doctor.active == True))
-        .order_by(Slot.start_time)
+        select(DoctorAvailability, Doctor)
+        .join(Doctor, DoctorAvailability.doctor_id == Doctor.id)
+        .where(Doctor.active == True)
+        .order_by(DoctorAvailability.available_date, DoctorAvailability.start_time, Doctor.name)
     )
     if specialization:
         statement = statement.where(Doctor.specialization == specialization)
 
     rows = session.exec(statement).all()
-    return [
-        SlotRead(
-            id=slot.id,
-            doctor_id=doctor.id,
-            doctor_name=doctor.name,
-            specialization=doctor.specialization,
-            start_time=slot.start_time,
-            end_time=slot.end_time,
+    output: list[SlotRead] = []
+    for availability, doctor in rows:
+        if availability.id is None:
+            continue
+        start_at = availability_start_datetime(availability)
+        if start_at <= datetime.now(timezone.utc):
+            continue
+        booked_count = count_availability_bookings(session, availability.id)
+        remaining_slots = max(availability.max_patients - booked_count, 0)
+        output.append(
+            SlotRead(
+                id=availability.id,
+                availability_id=availability.id,
+                doctor_id=doctor.id,
+                doctor_name=doctor.name,
+                specialization=doctor.specialization,
+                available_date=availability.available_date,
+                start_time=start_at,
+                end_time=availability_end_datetime(availability),
+                max_patients=availability.max_patients,
+                booked_count=booked_count,
+                remaining_slots=remaining_slots,
+                fully_booked=remaining_slots <= 0,
+            )
         )
-        for slot, doctor in rows
-    ]
+    return output
 
 
 def find_specialization_by_symptoms(session: Session, message: str) -> str | None:
@@ -347,10 +388,10 @@ def get_dashboard_metrics(session: Session) -> dict:
 
 def list_recent_bookings(session: Session, limit: int = 10) -> list[dict]:
     rows = session.exec(
-        select(Appointment, User, Doctor, Slot)
+        select(Appointment, User, Doctor, DoctorAvailability)
         .join(User, Appointment.user_id == User.id)
         .join(Doctor, Appointment.doctor_id == Doctor.id)
-        .join(Slot, Appointment.slot_id == Slot.id)
+        .join(DoctorAvailability, Appointment.availability_id == DoctorAvailability.id)
         .order_by(Appointment.created_at.desc())
         .limit(limit)
     ).all()
@@ -361,10 +402,10 @@ def list_recent_bookings(session: Session, limit: int = 10) -> list[dict]:
             "patient_name": user.name,
             "doctor_name": doctor.name,
             "specialization": doctor.specialization,
-            "slot_start": slot.start_time,
+            "slot_start": availability_start_datetime(availability),
             "status": appointment.status.value,
         }
-        for appointment, user, doctor, slot in rows
+        for appointment, user, doctor, availability in rows
     ]
 
 
@@ -404,19 +445,27 @@ def list_notifications(session: Session, limit: int = 20) -> list[NotificationLo
 
 
 def book_appointment(session: Session, user_id: int, doctor_id: int, slot_id: int) -> Appointment:
-    slot = session.get(Slot, slot_id)
-    if not slot or slot.doctor_id != doctor_id or slot.is_booked:
-        raise HTTPException(status_code=409, detail="Selected slot is no longer available")
+    availability = session.get(DoctorAvailability, slot_id)
+    if not availability or availability.doctor_id != doctor_id:
+        raise HTTPException(status_code=409, detail="Selected availability is no longer available")
 
-    appointment = Appointment(user_id=user_id, doctor_id=doctor_id, slot_id=slot_id)
-    slot.is_booked = True
-    session.add(slot)
+    token_number = get_next_token_number(session, availability.id, availability.max_patients)
+    if token_number is None:
+        raise HTTPException(status_code=409, detail="Selected availability is fully booked")
+
+    appointment = Appointment(
+        user_id=user_id,
+        doctor_id=doctor_id,
+        availability_id=availability.id,
+        slot_id=None,
+        token_number=token_number,
+    )
     session.add(appointment)
     try:
         session.commit()
     except IntegrityError as exc:
         session.rollback()
-        raise HTTPException(status_code=409, detail="Selected slot is no longer available") from exc
+        raise HTTPException(status_code=409, detail="Selected availability is no longer available") from exc
 
     session.refresh(appointment)
     user = session.get(User, user_id)
@@ -435,11 +484,11 @@ def send_booking_confirmation(
 ) -> MessageResult:
     user = session.get(User, appointment.user_id)
     doctor = session.get(Doctor, appointment.doctor_id)
-    slot = session.get(Slot, appointment.slot_id)
-    if not user or not doctor or not slot:
+    availability = session.get(DoctorAvailability, appointment.availability_id)
+    if not user or not doctor or not availability:
         return MessageResult(status="sms_failed", detail="Booking confirmation data is incomplete.")
 
-    body = build_booking_confirmation_message(appointment, user, doctor, slot)
+    body = build_booking_confirmation_message(appointment, user, doctor, availability)
     recipient = recipient_phone or user.phone
     result = sms_service.send_sms(recipient, body)
     session.add(
@@ -464,14 +513,14 @@ def sync_booking_calendar(
 ) -> str:
     user = session.get(User, appointment.user_id)
     doctor = session.get(Doctor, appointment.doctor_id)
-    slot = session.get(Slot, appointment.slot_id)
-    if not user or not doctor or not slot:
+    availability = session.get(DoctorAvailability, appointment.availability_id)
+    if not user or not doctor or not availability:
         appointment.calendar_status = "calendar_data_missing"
         session.add(appointment)
         session.commit()
         return appointment.calendar_status
 
-    result = calendar_service.create_appointment_event(appointment, user, doctor, slot, recipient_phone)
+    result = calendar_service.create_appointment_event(appointment, user, doctor, availability, recipient_phone)
     appointment.calendar_status = result.status
     appointment.calendar_event_id = result.event_id
     session.add(appointment)
@@ -483,13 +532,14 @@ def build_booking_confirmation_message(
     appointment: Appointment,
     user: User,
     doctor: Doctor,
-    slot: Slot,
+    availability: DoctorAvailability,
 ) -> str:
     patient = user.name or "Patient"
     clinic_name = get_settings().clinic_name
+    token_text = f" Token: {appointment.token_number:02d}." if appointment.token_number else ""
     return (
         f"{clinic_name}: Hi {patient}, your appointment with {doctor.name} "
-        f"on {format_slot(slot.start_time)} is confirmed. Booking ID: {appointment.id}."
+        f"on {format_availability(availability)} is confirmed. Booking ID: {appointment.id}.{token_text}"
     )
 
 
@@ -837,7 +887,7 @@ def advance_conversation(session: Session, user: User, call: CallLog, message: s
                 slot_options=build_slot_options(list_available_slots(session, call.selected_specialization)),
             )
         if intent.intent == "affirmative":
-            if not all([call.patient_name, call.patient_gender, call.patient_age, call.patient_phone]):
+            if not all([call.patient_name, call.patient_gender, call.patient_age, call.patient_phone, call.selected_slot_id]):
                 reply = "I still need a few details before I can book this."
                 return persist_call_response(
                     session, call, ConversationState.collect_name, reply, intent.intent, "collect_name"
@@ -854,7 +904,8 @@ def advance_conversation(session: Session, user: User, call: CallLog, message: s
             notification = send_booking_confirmation(session, appointment, call.patient_phone)
             sync_booking_calendar(session, appointment, call.patient_phone)
             call.outcome = CallOutcome.booked
-            reply = f"All set. Your appointment is confirmed, and your booking ID is {appointment.id}."
+            token_text = f" Your token number is {appointment.token_number:02d}." if appointment.token_number else ""
+            reply = f"All set. Your appointment is confirmed, and your booking ID is {appointment.id}.{token_text}"
             return persist_call_response(
                 session,
                 call,
@@ -966,7 +1017,7 @@ def present_slots_for_doctor(session: Session, call: CallLog, intent: str) -> Ch
     return persist_call_response(session, call, ConversationState.show_slots, reply, intent, "show_slots")
 
 
-def choose_first_available_slot(session: Session, doctor_id: int | None) -> Slot | None:
+def choose_first_available_slot(session: Session, doctor_id: int | None) -> DoctorAvailability | None:
     return choose_available_slot(session, doctor_id)
 
 
@@ -975,47 +1026,48 @@ def choose_available_slot(
     doctor_id: int | None,
     slot_hint: str | None = None,
     specialization: str | None = None,
-) -> Slot | None:
+) -> DoctorAvailability | None:
     if not doctor_id and not specialization:
         return None
-    statement = (
-        select(Slot, Doctor)
-        .join(Doctor, Slot.doctor_id == Doctor.id)
-        .where(and_(Slot.is_booked == False, Slot.start_time > datetime.now(timezone.utc), Doctor.active == True))
-        .order_by(Slot.start_time)
-    )
-    if specialization:
-        statement = statement.where(Doctor.specialization == specialization)
-    elif doctor_id:
-        statement = statement.where(Slot.doctor_id == doctor_id)
-    rows = session.exec(statement).all()
-    slots = [slot for slot, _doctor in rows]
-    if not slots:
+    options = list_available_slots(session, specialization)
+    if doctor_id and not specialization:
+        options = [option for option in options if option.doctor_id == doctor_id]
+    options = [option for option in options if not option.fully_booked]
+    if not options:
         return None
     if not slot_hint:
-        return slots[0]
+        return session.get(DoctorAvailability, options[0].availability_id)
 
     slot_id = parse_requested_slot_id(slot_hint)
     if slot_id is not None:
-        for slot in slots:
-            if slot.id == slot_id:
-                return slot
+        if 1 <= slot_id <= len(options):
+            return session.get(DoctorAvailability, options[slot_id - 1].availability_id)
+        for option in options:
+            if option.availability_id == slot_id:
+                return session.get(DoctorAvailability, option.availability_id)
 
     target_hour = parse_requested_hour(slot_hint)
     target_date = parse_requested_date(slot_hint)
     if slot_id is None and target_hour is None and target_date is None:
         return None
-    for slot in slots:
-        if target_hour is not None and slot.start_time.hour != target_hour:
+    for option in options:
+        if target_hour is not None and not (option.start_time.hour <= target_hour < option.end_time.hour):
             continue
-        if target_date is not None and slot.start_time.date() != target_date:
+        if target_date is not None and option.available_date != target_date:
             continue
-        return slot
+        return session.get(DoctorAvailability, option.availability_id)
     return None
 
 
 def parse_requested_hour(slot_hint: str) -> int | None:
     lowered = slot_hint.lower()
+    has_explicit_time_marker = bool(re.search(r"\b(am|pm|baje)\b|:", lowered))
+    has_date_marker = bool(
+        re.search(r"\b(?:june|jun)\s*\d{1,2}(?:st|nd|rd|th)?\b", lowered)
+        or re.search(r"\b\d{1,2}(?:st|nd|rd|th)?\s*(?:june|jun)\b", lowered)
+    )
+    if has_date_marker and not has_explicit_time_marker:
+        return None
     match = re.search(r"\b(\d{1,2})(?::\d{2})?\s*(am|pm)?\b", lowered)
     if not match:
         return None
@@ -1031,10 +1083,28 @@ def parse_requested_hour(slot_hint: str) -> int | None:
 
 
 def parse_requested_slot_id(slot_hint: str) -> int | None:
-    match = re.search(r"(?:slot|id)\s*[:#-]?\s*(\d+)", slot_hint.lower())
-    if not match:
-        return None
-    return int(match.group(1))
+    match = re.search(r"(?:slot|option|id)\s*[:#-]?\s*(\d+)", slot_hint.lower())
+    if match:
+        return int(match.group(1))
+    words = {
+        "first": 1,
+        "one": 1,
+        "1st": 1,
+        "second": 2,
+        "two": 2,
+        "2nd": 2,
+        "third": 3,
+        "three": 3,
+        "3rd": 3,
+        "fourth": 4,
+        "four": 4,
+        "4th": 4,
+    }
+    lowered = slot_hint.lower()
+    for word, value in words.items():
+        if re.search(rf"\b{re.escape(word)}\b", lowered):
+            return value
+    return None
 
 
 def parse_requested_date(slot_hint: str):
@@ -1044,6 +1114,34 @@ def parse_requested_date(slot_hint: str):
         return today + timedelta(days=1)
     if "today" in lowered or "aaj" in lowered:
         return today
+    weekday_map = {
+        "saturday": date(2026, 6, 6),
+        "sat": date(2026, 6, 6),
+        "sunday": date(2026, 6, 7),
+        "sun": date(2026, 6, 7),
+        "monday": date(2026, 6, 8),
+        "mon": date(2026, 6, 8),
+        "tuesday": date(2026, 6, 9),
+        "tue": date(2026, 6, 9),
+    }
+    for word, value in weekday_map.items():
+        if re.search(rf"\b{word}\b", lowered):
+            return value
+    explicit_dates = {
+        6: date(2026, 6, 6),
+        7: date(2026, 6, 7),
+        8: date(2026, 6, 8),
+        9: date(2026, 6, 9),
+    }
+    month_date = re.search(r"\b(?:june|jun)\s*(\d{1,2})(?:st|nd|rd|th)?\b", lowered)
+    if month_date:
+        return explicit_dates.get(int(month_date.group(1)))
+    date_month = re.search(r"\b(\d{1,2})(?:st|nd|rd|th)?\s*(?:june|jun)\b", lowered)
+    if date_month:
+        return explicit_dates.get(int(date_month.group(1)))
+    bare_day = re.search(r"\b([6-9])(?:st|nd|rd|th)?\b", lowered)
+    if bare_day and any(word in lowered for word in ["date", "june", "jun", "tarikh", "tareekh"]):
+        return explicit_dates.get(int(bare_day.group(1)))
     return None
 
 
@@ -1192,14 +1290,25 @@ def normalize_spelled_name(words: list[str]) -> str:
 
 def build_slot_options(slots: list[SlotRead]) -> list[SlotOption]:
     options: list[SlotOption] = []
-    for slot in slots[:SLOT_OPTIONS_LIMIT]:
+    for index, slot in enumerate(slots[:SLOT_OPTIONS_LIMIT], start=1):
         options.append(
             SlotOption(
-                slot_id=slot.id,
+                slot_id=index,
+                availability_id=slot.availability_id,
                 doctor_name=slot.doctor_name,
                 specialization=slot.specialization,
+                available_date=slot.available_date,
                 start_time=slot.start_time,
-                label=f"Slot {slot.id}: {slot.doctor_name} ({slot.specialization}) on {format_slot(slot.start_time)}",
+                end_time=slot.end_time,
+                max_patients=slot.max_patients,
+                booked_count=slot.booked_count,
+                remaining_slots=slot.remaining_slots,
+                fully_booked=slot.fully_booked,
+                label=(
+                    f"Option {index:02d}: {slot.doctor_name} ({slot.specialization}) "
+                    f"on {format_time_range(slot.start_time, slot.end_time)}. "
+                    f"Slots available: {slot.remaining_slots}/{slot.max_patients}."
+                ),
             )
         )
     return options
@@ -1208,18 +1317,35 @@ def build_slot_options(slots: list[SlotRead]) -> list[SlotOption]:
 def build_selected_slot_option(session: Session, call: CallLog) -> SlotOption | None:
     if not call.selected_slot_id:
         return None
-    slot = session.get(Slot, call.selected_slot_id)
-    if not slot:
+    availability = session.get(DoctorAvailability, call.selected_slot_id)
+    if not availability:
         return None
-    doctor = session.get(Doctor, slot.doctor_id)
+    doctor = session.get(Doctor, availability.doctor_id)
     if not doctor:
         return None
+    display_slot_id = call.selected_slot_id
+    for index, option in enumerate(list_available_slots(session, doctor.specialization), start=1):
+        if option.availability_id == availability.id:
+            display_slot_id = index
+            break
+    booked_count = count_availability_bookings(session, availability.id)
+    remaining_slots = max(availability.max_patients - booked_count, 0)
     return SlotOption(
-        slot_id=slot.id,
+        slot_id=display_slot_id,
+        availability_id=availability.id,
         doctor_name=doctor.name,
         specialization=doctor.specialization,
-        start_time=slot.start_time,
-        label=f"Slot {slot.id}: {doctor.name} ({doctor.specialization}) on {format_slot(slot.start_time)}",
+        available_date=availability.available_date,
+        start_time=availability_start_datetime(availability),
+        end_time=availability_end_datetime(availability),
+        max_patients=availability.max_patients,
+        booked_count=booked_count,
+        remaining_slots=remaining_slots,
+        fully_booked=remaining_slots <= 0,
+        label=(
+            f"{doctor.name} ({doctor.specialization}) on "
+            f"{format_availability(availability)}. Slots available: {remaining_slots}/{availability.max_patients}."
+        ),
     )
 
 
@@ -1247,10 +1373,10 @@ def friendly_specialization(specialization: str | None) -> str:
 def build_booking_review(session: Session, call: CallLog) -> BookingReview | None:
     if not all([call.patient_name, call.patient_gender, call.patient_age, call.patient_phone, call.selected_slot_id]):
         return None
-    slot = session.get(Slot, call.selected_slot_id)
-    if not slot:
+    availability = session.get(DoctorAvailability, call.selected_slot_id)
+    if not availability:
         return None
-    doctor = session.get(Doctor, slot.doctor_id)
+    doctor = session.get(Doctor, availability.doctor_id)
     if not doctor:
         return None
     call.selected_doctor_id = doctor.id
@@ -1262,7 +1388,7 @@ def build_booking_review(session: Session, call: CallLog) -> BookingReview | Non
         phone=call.patient_phone,
         doctor_name=doctor.name,
         specialization=doctor.specialization,
-        slot_time=format_slot(slot.start_time),
+        slot_time=format_availability(availability),
     )
 
 
@@ -1354,6 +1480,17 @@ def format_slot(value: datetime) -> str:
     return value.strftime("%A %I:%M %p").replace(" 0", " ")
 
 
+def format_time_range(start_value: datetime, end_value: datetime) -> str:
+    date_text = start_value.strftime("%a, %b %d").replace(" 0", " ")
+    start_text = start_value.strftime("%I:%M %p").replace(" 0", " ")
+    end_text = end_value.strftime("%I:%M %p").replace(" 0", " ")
+    return f"{date_text}, {start_text} - {end_text}"
+
+
+def format_availability(availability: DoctorAvailability) -> str:
+    return format_time_range(availability_start_datetime(availability), availability_end_datetime(availability))
+
+
 def seed_demo_data(session: Session) -> None:
     doctors = session.exec(select(Doctor).order_by(Doctor.id)).all()
     doctors_by_name = {doctor.name: doctor for doctor in doctors}
@@ -1372,25 +1509,31 @@ def seed_demo_data(session: Session) -> None:
     session.commit()
     doctors = session.exec(select(Doctor).where(Doctor.active == True).order_by(Doctor.id)).all()
 
-    slots: list[Slot] = []
+    availabilities: list[DoctorAvailability] = []
     for doctor in doctors:
-        for day_offset in DEMO_SLOT_DAY_OFFSETS:
-            slot_date = datetime.now(timezone.utc).date() + timedelta(days=day_offset)
+        for slot_date in DEMO_SLOT_DATES:
             for slot_time in DEMO_SLOT_TIMES:
-                start_time = datetime.combine(slot_date, slot_time, tzinfo=timezone.utc)
-                existing_slot = session.exec(
-                    select(Slot).where(and_(Slot.doctor_id == doctor.id, Slot.start_time == start_time))
-                ).first()
-                if not existing_slot:
-                    slots.append(
-                        Slot(
-                            doctor_id=doctor.id,
-                            start_time=start_time,
-                            end_time=start_time + timedelta(minutes=30),
+                existing_availability = session.exec(
+                    select(DoctorAvailability).where(
+                        and_(
+                            DoctorAvailability.doctor_id == doctor.id,
+                            DoctorAvailability.available_date == slot_date,
+                            DoctorAvailability.start_time == slot_time,
                         )
                     )
-    if slots:
-        session.add_all(slots)
+                ).first()
+                if not existing_availability:
+                    availabilities.append(
+                        DoctorAvailability(
+                            doctor_id=doctor.id,
+                            available_date=slot_date,
+                            start_time=slot_time,
+                            end_time=DEMO_AVAILABILITY_END_TIME,
+                            max_patients=DEFAULT_MAX_PATIENTS_PER_AVAILABILITY,
+                        )
+                    )
+    if availabilities:
+        session.add_all(availabilities)
         session.commit()
 
 
@@ -1403,14 +1546,13 @@ def reset_test_bookings(session: Session) -> None:
     session.exec(text("DELETE FROM appointment"))
     session.exec(text("DELETE FROM transcript"))
     session.exec(text("DELETE FROM calllog"))
-    for slot in session.exec(select(Slot)).all():
-        slot.is_booked = False
-        session.add(slot)
     session.commit()
 
 
 def reset_demo_database(session: Session) -> None:
     reset_test_bookings(session)
+    session.exec(delete(DoctorAvailability))
+    session.exec(delete(Slot))
     session.exec(delete(User))
     session.commit()
     seed_demo_data(session)
@@ -1501,28 +1643,43 @@ def seed_demo_operational_data(session: Session, doctors: list[Doctor]) -> None:
                 session.add(Transcript(call_id=call.id, speaker=speaker, text=text_value, language=language))
             session.commit()
 
-        slot_start = datetime.combine(
-            now.date() + timedelta(days=spec["slot_day_offset"]),
-            time(spec["slot_hour"], 0),
-            tzinfo=timezone.utc,
-        )
-        slot = session.exec(select(Slot).where(and_(Slot.doctor_id == doctor.id, Slot.start_time == slot_start))).first()
-        if not slot:
-            slot = Slot(
-                doctor_id=doctor.id,
-                start_time=slot_start,
-                end_time=slot_start + timedelta(minutes=30),
-                is_booked=False,
+        available_date = now.date() + timedelta(days=spec["slot_day_offset"])
+        start_time = time(spec["slot_hour"], 0)
+        availability = session.exec(
+            select(DoctorAvailability).where(
+                and_(
+                    DoctorAvailability.doctor_id == doctor.id,
+                    DoctorAvailability.available_date == available_date,
+                    DoctorAvailability.start_time == start_time,
+                )
             )
-            session.add(slot)
+        ).first()
+        if not availability:
+            availability = DoctorAvailability(
+                doctor_id=doctor.id,
+                available_date=available_date,
+                start_time=start_time,
+                end_time=DEMO_AVAILABILITY_END_TIME,
+                max_patients=DEFAULT_MAX_PATIENTS_PER_AVAILABILITY,
+            )
+            session.add(availability)
             session.commit()
-            session.refresh(slot)
+            session.refresh(availability)
 
-        appointment = session.exec(select(Appointment).where(Appointment.slot_id == slot.id)).first()
+        appointment = session.exec(
+            select(Appointment).where(
+                and_(Appointment.availability_id == availability.id, Appointment.user_id == user.id)
+            )
+        ).first()
         if not appointment:
-            appointment = Appointment(user_id=user.id, doctor_id=doctor.id, slot_id=slot.id)
-            slot.is_booked = True
-            session.add(slot)
+            token_number = get_next_token_number(session, availability.id, availability.max_patients) or 1
+            appointment = Appointment(
+                user_id=user.id,
+                doctor_id=doctor.id,
+                availability_id=availability.id,
+                slot_id=None,
+                token_number=token_number,
+            )
             session.add(appointment)
             session.commit()
             session.refresh(appointment)
@@ -1543,7 +1700,7 @@ def seed_demo_operational_data(session: Session, doctors: list[Doctor]) -> None:
                     recipient=user.phone,
                     message=(
                         f"Pawani Medicals: Hi {user.name}, your appointment with {doctor.name} "
-                        f"on {format_slot(slot.start_time)} is confirmed. Booking ID: {appointment.id}."
+                        f"on {format_availability(availability)} is confirmed. Booking ID: {appointment.id}."
                     ),
                     status=spec["sms_status"],
                     provider_message_id=f"demo-msg-{index}" if spec["sms_status"] == "sms_sent" else None,

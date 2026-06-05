@@ -22,6 +22,8 @@ def apply_schema_migrations() -> None:
             "symptoms": "JSON",
         },
         "appointment": {
+            "availability_id": "INTEGER",
+            "token_number": "INTEGER",
             "calendar_event_id": "VARCHAR(255)",
             "calendar_status": "VARCHAR(255)",
         },
@@ -57,6 +59,7 @@ def apply_schema_migrations() -> None:
 
     if engine.dialect.name == "mysql" and inspector.has_table("calllog"):
         make_mysql_call_state_text()
+        remove_mysql_legacy_slot_constraints()
 
     if engine.dialect.name == "sqlite" and inspector.has_table("user"):
         remove_sqlite_user_phone_unique_index()
@@ -72,6 +75,27 @@ def make_mysql_call_state_text() -> None:
                 """
             )
         )
+        session.commit()
+
+
+def remove_mysql_legacy_slot_constraints() -> None:
+    inspector = inspect(engine)
+    with Session(engine) as session:
+        if inspector.has_table("calllog"):
+            for foreign_key in inspector.get_foreign_keys("calllog"):
+                if foreign_key.get("constrained_columns") == ["selected_slot_id"] and foreign_key.get("name"):
+                    session.exec(text(f"ALTER TABLE calllog DROP FOREIGN KEY {foreign_key['name']}"))
+
+        if inspector.has_table("appointment"):
+            for foreign_key in inspector.get_foreign_keys("appointment"):
+                if foreign_key.get("constrained_columns") == ["slot_id"] and foreign_key.get("name"):
+                    session.exec(text(f"ALTER TABLE appointment DROP FOREIGN KEY {foreign_key['name']}"))
+
+            for index in inspector.get_indexes("appointment"):
+                if index.get("unique") and index.get("column_names") == ["slot_id"] and index.get("name"):
+                    session.exec(text(f"DROP INDEX {index['name']} ON appointment"))
+
+            session.exec(text("ALTER TABLE appointment MODIFY COLUMN slot_id INTEGER NULL"))
         session.commit()
 
 

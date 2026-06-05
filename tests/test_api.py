@@ -105,6 +105,33 @@ def test_chat_booking_logs_sms_attempt(monkeypatch) -> None:
         app.dependency_overrides.clear()
 
 
+def test_sms_test_endpoint_dispatches_provider(monkeypatch) -> None:
+    monkeypatch.setenv("SMS_PROVIDER", "fast2sms")
+    monkeypatch.setenv("FAST2SMS_API_KEY", "demo-key")
+    get_settings.cache_clear()
+
+    def fake_send(to_phone: str, body: str):
+        assert to_phone == "9876543210"
+        assert body == "Test from API"
+        return type(
+            "Result",
+            (),
+            {"status": "sms_sent", "provider_message_id": "req-1", "detail": "SMS sent."},
+        )()
+
+    monkeypatch.setattr("app.main.sms_service.send_sms", fake_send)
+
+    with TestClient(app) as client:
+        response = client.post("/sms/test", json={"phone": "9876543210", "message": "Test from API"})
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "status": "sms_sent",
+        "provider_message_id": "req-1",
+        "detail": "SMS sent.",
+    }
+
+
 def test_transcribe_can_store_user_transcript(monkeypatch) -> None:
     call_id = f"phase-4-store-{uuid4().hex}"
 
@@ -214,7 +241,7 @@ def test_doctors_include_symptoms_column() -> None:
         app.dependency_overrides.clear()
 
 
-def test_demo_seed_creates_twenty_slots_per_doctor() -> None:
+def test_demo_seed_creates_four_availability_sessions_per_doctor() -> None:
     use_in_memory_database()
     try:
         with TestClient(app) as client:
@@ -222,11 +249,17 @@ def test_demo_seed_creates_twenty_slots_per_doctor() -> None:
             slots = client.get("/available-slots").json()
 
         counts_by_doctor_id = {}
+        slot_dates = set()
         for slot in slots:
             counts_by_doctor_id[slot["doctor_id"]] = counts_by_doctor_id.get(slot["doctor_id"], 0) + 1
+            slot_dates.add(slot["start_time"][:10])
+            assert slot["max_patients"] == 50
+            assert slot["remaining_slots"] == 50
+            assert slot["fully_booked"] is False
 
         assert len(doctors) == 13
-        assert all(counts_by_doctor_id[doctor["id"]] == 20 for doctor in doctors)
+        assert all(counts_by_doctor_id[doctor["id"]] == 4 for doctor in doctors)
+        assert slot_dates == {"2026-06-06", "2026-06-07", "2026-06-08", "2026-06-09"}
     finally:
         app.dependency_overrides.clear()
 

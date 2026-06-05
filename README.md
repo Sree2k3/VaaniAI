@@ -264,7 +264,31 @@ For hosted deployment, use a persistent database:
 DATABASE_URL=mysql+pymysql://USER:PASSWORD@HOST:3306/vaaniai
 ```
 
-The app includes startup migration logic for the current MVP schema, including doctor symptoms, session booking fields, calendar status fields, and MySQL-safe call state storage.
+The app includes startup migration logic for the current MVP schema, including doctor symptoms, session booking fields, doctor availability, appointment token numbers, calendar status fields, and MySQL-safe call state storage.
+
+### Appointment Availability Model
+
+VaaniAI now uses doctor availability sessions instead of exposing raw database slot IDs.
+
+- `doctor` stores doctor profile and specialty data.
+- `doctoravailability` stores when a doctor sits: `doctor_id`, `available_date`, `start_time`, `end_time`, and `max_patients`.
+- `appointment` stores the selected `availability_id` and assigned `token_number`.
+- The UI shows availability cards with doctor name, specialty, date, time range, and remaining capacity.
+- Patients choose visible options such as `Option 01`; the backend maps that to the correct availability row.
+- Demo data shows exactly four options per matched doctor: June 6, 7, 8, and 9 from 10:00 AM to 11:00 PM.
+- Booking assigns the next token number, for example `01`, `02`, `03`, and blocks once `max_patients` is reached.
+
+SQL migration script:
+
+```text
+migrations/001_doctor_availability_tokens.sql
+```
+
+Reset local demo availability data:
+
+```powershell
+python scripts\reset_demo_slots.py
+```
 
 ## Run Locally
 
@@ -303,7 +327,7 @@ pytest -q
 Expected current result:
 
 ```text
-45 passed
+57 passed
 ```
 
 Check frontend JavaScript syntax:

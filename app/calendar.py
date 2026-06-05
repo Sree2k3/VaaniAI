@@ -1,7 +1,8 @@
 from dataclasses import dataclass
+from datetime import datetime, timezone
 
 from app.config import get_settings
-from app.models import Appointment, Doctor, Slot, User
+from app.models import Appointment, Doctor, DoctorAvailability, Slot, User
 
 
 @dataclass(frozen=True)
@@ -17,7 +18,7 @@ class CalendarService:
         appointment: Appointment,
         user: User,
         doctor: Doctor,
-        slot: Slot,
+        slot: Slot | DoctorAvailability,
         patient_phone: str | None = None,
     ) -> CalendarResult:
         settings = get_settings()
@@ -40,6 +41,13 @@ class CalendarService:
             scopes=["https://www.googleapis.com/auth/calendar"],
         )
         service = build("calendar", "v3", credentials=credentials, cache_discovery=False)
+        if isinstance(slot, DoctorAvailability):
+            start_time = datetime.combine(slot.available_date, slot.start_time, tzinfo=timezone.utc)
+            end_time = datetime.combine(slot.available_date, slot.end_time, tzinfo=timezone.utc)
+        else:
+            start_time = slot.start_time
+            end_time = slot.end_time
+
         event = {
             "summary": f"{settings.clinic_name}: {user.name or 'Patient'} with {doctor.name}",
             "description": (
@@ -49,8 +57,8 @@ class CalendarService:
                 f"Doctor: {doctor.name}\n"
                 f"Specialization: {doctor.specialization}"
             ),
-            "start": {"dateTime": slot.start_time.isoformat(), "timeZone": "Asia/Kolkata"},
-            "end": {"dateTime": slot.end_time.isoformat(), "timeZone": "Asia/Kolkata"},
+            "start": {"dateTime": start_time.isoformat(), "timeZone": "Asia/Kolkata"},
+            "end": {"dateTime": end_time.isoformat(), "timeZone": "Asia/Kolkata"},
         }
         created = service.events().insert(calendarId=settings.google_calendar_id, body=event).execute()
         return CalendarResult(status="calendar_synced", event_id=created.get("id"), detail="Google Calendar event created.")

@@ -31,7 +31,7 @@ const state = {
   waitingForRestart: false,
 };
 
-const uiVersion = "20260605-ui-booking-flow-v2";
+const uiVersion = "20260605-availability-token-flow-v1";
 console.info(`VaaniAI UI ${uiVersion}`);
 
 const els = {
@@ -162,6 +162,25 @@ function formatSlotTime(startTime) {
   });
 }
 
+function formatTimeOnly(value) {
+  return new Date(value).toLocaleTimeString([], {
+    hour: "numeric",
+    minute: "2-digit",
+  });
+}
+
+function formatSlotDate(value) {
+  return new Date(value).toLocaleDateString([], {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+  });
+}
+
+function formatSlotWindow(slot) {
+  return `${formatTimeOnly(slot.start_time)} - ${formatTimeOnly(slot.end_time)}`;
+}
+
 function renderSlots(slotOptions = [], selectedSlot = null) {
   els.slotCards.innerHTML = "";
 
@@ -176,8 +195,11 @@ function renderSlots(slotOptions = [], selectedSlot = null) {
   slotOptions.forEach((slot) => {
     const card = document.createElement("article");
     card.className = "slot-card";
-    if (selectedSlot && Number(selectedSlot.slot_id) === Number(slot.slot_id)) {
+    if (selectedSlot && Number(selectedSlot.availability_id) === Number(slot.availability_id)) {
       card.classList.add("selected");
+    }
+    if (slot.fully_booked) {
+      card.classList.add("fully-booked");
     }
 
     const doctor = document.createElement("strong");
@@ -186,13 +208,22 @@ function renderSlots(slotOptions = [], selectedSlot = null) {
     const spec = document.createElement("span");
     spec.textContent = slot.specialization.replace(/\b\w/g, (letter) => letter.toUpperCase());
 
+    const date = document.createElement("span");
+    date.textContent = formatSlotDate(slot.start_time);
+
     const time = document.createElement("span");
-    time.textContent = formatSlotTime(slot.start_time);
+    time.textContent = formatSlotWindow(slot);
+
+    const capacity = document.createElement("span");
+    capacity.className = "capacity-line";
+    capacity.textContent = slot.fully_booked
+      ? "Fully Booked"
+      : `Slots Available: ${slot.remaining_slots} / ${slot.max_patients}`;
 
     const code = document.createElement("code");
-    code.textContent = `Say: slot ${slot.slot_id}`;
+    code.textContent = slot.fully_booked ? "Closed" : `Say: option ${String(slot.slot_id).padStart(2, "0")}`;
 
-    card.append(doctor, spec, time, code);
+    card.append(doctor, spec, date, time, capacity, code);
     els.slotCards.appendChild(card);
   });
 }
@@ -263,12 +294,15 @@ function renderSelectedSlot(slot) {
   specialty.textContent = slot.specialization.replace(/\b\w/g, (letter) => letter.toUpperCase());
 
   const time = document.createElement("span");
-  time.textContent = formatSlotTime(slot.start_time);
+  time.textContent = `${formatSlotDate(slot.start_time)} · ${formatSlotWindow(slot)}`;
+
+  const capacity = document.createElement("span");
+  capacity.textContent = `Slots Available: ${slot.remaining_slots} / ${slot.max_patients}`;
 
   const code = document.createElement("code");
-  code.textContent = `Slot ${slot.slot_id}`;
+  code.textContent = `Option ${String(slot.slot_id).padStart(2, "0")}`;
 
-  card.append(doctor, specialty, time, code);
+  card.append(doctor, specialty, time, capacity, code);
   els.selectedSlotDetails.appendChild(card);
   els.selectedSlotBox.hidden = false;
 }

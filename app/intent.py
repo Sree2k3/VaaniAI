@@ -252,22 +252,27 @@ def detect_intent(message: str) -> IntentResult:
     if gender:
         return IntentResult("gender_provided", gender=gender)
 
-    age = extract_age(lowered)
-    if age is not None:
-        return IntentResult("age_provided", age=age)
-
     phone = extract_phone(lowered)
     if phone:
         return IntentResult("phone_provided", phone=phone)
+
+    if any(keyword in lowered for keyword in ["age", "years", "year", "saal", "umra", "umar", "à¤¸à¤¾à¤²", "à¤‰à¤®à¥à¤°"]):
+        age = extract_age(lowered)
+        if age is not None:
+            return IntentResult("age_provided", age=age)
+
+    if looks_like_slot(lowered):
+        return IntentResult("slot_selected", slot_hint=lowered)
+
+    age = extract_age(lowered)
+    if age is not None:
+        return IntentResult("age_provided", age=age)
 
     tokens = set(tokenize_words(lowered))
     if any(word in tokens for word in AFFIRMATIVE_WORDS):
         return IntentResult("affirmative")
     if any(word in tokens for word in NEGATIVE_WORDS):
         return IntentResult("negative")
-
-    if looks_like_slot(lowered):
-        return IntentResult("slot_selected", slot_hint=lowered)
 
     if any(word in lowered for word in BOOKING_WORDS):
         return IntentResult("book_appointment")
@@ -295,9 +300,42 @@ def phrase_matches(text: str, phrase: str) -> bool:
 
 
 def looks_like_slot(lowered: str) -> bool:
+    slot_words = {
+        "baje",
+        "morning",
+        "evening",
+        "tomorrow",
+        "kal",
+        "today",
+        "aaj",
+        "option",
+        "slot",
+        "first",
+        "second",
+        "third",
+        "fourth",
+        "saturday",
+        "sunday",
+        "monday",
+        "tuesday",
+        "june",
+        "jun",
+        "date",
+        "tarikh",
+        "tareekh",
+    }
+    tokens = set(tokenize_words(lowered))
+    if any(word in tokens for word in slot_words):
+        return True
+    if re.search(r"\b\d{1,2}(?::\d{2})?\s*(am|pm)\b", lowered):
+        return True
+    if re.search(r"\b(slot|option|june|jun|date|tarikh|tareekh)\s*\d{1,2}\b", lowered):
+        return True
+    if re.search(r"\b\d{1,2}(st|nd|rd|th)?\s*(june|jun)\b", lowered):
+        return True
     time_words = ["am", "pm", "baje", "morning", "evening", "tomorrow", "kal", "today", "aaj", "बजे", "कल", "आज"]
     tokens = set(tokenize_words(lowered))
-    return any(char.isdigit() for char in lowered) or any(word in tokens for word in time_words)
+    return any(word in tokens for word in time_words)
 
 
 def extract_name(text: str) -> str:
