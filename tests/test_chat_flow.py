@@ -109,14 +109,14 @@ def test_availability_can_be_selected_by_option_date_or_time_window(monkeypatch)
     option_result = handle_chat(session_by_option, "call-option", "8111111111", "first option", "en")
     assert option_result.next_state == ConversationState.collect_name
     assert option_result.selected_slot is not None
-    assert option_result.selected_slot.available_date.isoformat() == "2026-06-06"
+    assert option_result.selected_slot.available_date.isoformat() == "2026-06-10"
 
     session_by_date = make_session()
     handle_chat(session_by_date, "call-date", "8111111112", "I need an ENT specialist", "en")
-    date_result = handle_chat(session_by_date, "call-date", "8111111112", "June 8", "en")
+    date_result = handle_chat(session_by_date, "call-date", "8111111112", "June 12", "en")
     assert date_result.next_state == ConversationState.collect_name
     assert date_result.selected_slot is not None
-    assert date_result.selected_slot.available_date.isoformat() == "2026-06-08"
+    assert date_result.selected_slot.available_date.isoformat() == "2026-06-12"
 
     session_by_time = make_session()
     handle_chat(session_by_time, "call-time", "8111111113", "I need an ENT specialist", "en")

@@ -217,10 +217,10 @@ DEMO_SLOT_TIMES = [
 ]
 DEMO_AVAILABILITY_END_TIME = time(23, 0)
 DEMO_SLOT_DATES = [
-    date(2026, 6, 6),
-    date(2026, 6, 7),
-    date(2026, 6, 8),
-    date(2026, 6, 9),
+    date(2026, 6, 10),
+    date(2026, 6, 11),
+    date(2026, 6, 12),
+    date(2026, 6, 13),
 ]
 DEFAULT_MAX_PATIENTS_PER_AVAILABILITY = 50
 SLOT_OPTIONS_LIMIT = 20
@@ -1115,23 +1115,23 @@ def parse_requested_date(slot_hint: str):
     if "today" in lowered or "aaj" in lowered:
         return today
     weekday_map = {
-        "saturday": date(2026, 6, 6),
-        "sat": date(2026, 6, 6),
-        "sunday": date(2026, 6, 7),
-        "sun": date(2026, 6, 7),
-        "monday": date(2026, 6, 8),
-        "mon": date(2026, 6, 8),
-        "tuesday": date(2026, 6, 9),
-        "tue": date(2026, 6, 9),
+        "wednesday": date(2026, 6, 10),
+        "wed": date(2026, 6, 10),
+        "thursday": date(2026, 6, 11),
+        "thu": date(2026, 6, 11),
+        "friday": date(2026, 6, 12),
+        "fri": date(2026, 6, 12),
+        "saturday": date(2026, 6, 13),
+        "sat": date(2026, 6, 13),
     }
     for word, value in weekday_map.items():
         if re.search(rf"\b{word}\b", lowered):
             return value
     explicit_dates = {
-        6: date(2026, 6, 6),
-        7: date(2026, 6, 7),
-        8: date(2026, 6, 8),
-        9: date(2026, 6, 9),
+        10: date(2026, 6, 10),
+        11: date(2026, 6, 11),
+        12: date(2026, 6, 12),
+        13: date(2026, 6, 13),
     }
     month_date = re.search(r"\b(?:june|jun)\s*(\d{1,2})(?:st|nd|rd|th)?\b", lowered)
     if month_date:
@@ -1139,7 +1139,7 @@ def parse_requested_date(slot_hint: str):
     date_month = re.search(r"\b(\d{1,2})(?:st|nd|rd|th)?\s*(?:june|jun)\b", lowered)
     if date_month:
         return explicit_dates.get(int(date_month.group(1)))
-    bare_day = re.search(r"\b([6-9])(?:st|nd|rd|th)?\b", lowered)
+    bare_day = re.search(r"\b(10|11|12|13)(?:st|nd|rd|th)?\b", lowered)
     if bare_day and any(word in lowered for word in ["date", "june", "jun", "tarikh", "tareekh"]):
         return explicit_dates.get(int(bare_day.group(1)))
     return None

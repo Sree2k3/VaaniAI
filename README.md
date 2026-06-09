@@ -275,7 +275,7 @@ VaaniAI now uses doctor availability sessions instead of exposing raw database s
 - `appointment` stores the selected `availability_id` and assigned `token_number`.
 - The UI shows availability cards with doctor name, specialty, date, time range, and remaining capacity.
 - Patients choose visible options such as `Option 01`; the backend maps that to the correct availability row.
-- Demo data shows exactly four options per matched doctor: June 6, 7, 8, and 9 from 10:00 AM to 11:00 PM.
+- Demo data shows exactly four options per matched doctor: June 10, 11, 12, and 13 from 10:00 AM to 11:00 PM.
 - Booking assigns the next token number, for example `01`, `02`, `03`, and blocks once `max_patients` is reached.
 
 SQL migration script:

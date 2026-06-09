@@ -49,7 +49,7 @@ def main() -> None:
         "appointments=0, "
         f"availabilities_reset={availability_count}, "
         f"max_patients={DEFAULT_MAX_PATIENTS_PER_AVAILABILITY}, "
-        "dates=2026-06-06,2026-06-07,2026-06-08,2026-06-09"
+        "dates=2026-06-10,2026-06-11,2026-06-12,2026-06-13"
     )
 
 

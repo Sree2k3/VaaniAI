@@ -259,7 +259,7 @@ def test_demo_seed_creates_four_availability_sessions_per_doctor() -> None:
 
         assert len(doctors) == 13
         assert all(counts_by_doctor_id[doctor["id"]] == 4 for doctor in doctors)
-        assert slot_dates == {"2026-06-06", "2026-06-07", "2026-06-08", "2026-06-09"}
+        assert slot_dates == {"2026-06-10", "2026-06-11", "2026-06-12", "2026-06-13"}
     finally:
         app.dependency_overrides.clear()
 
