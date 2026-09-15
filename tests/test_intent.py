@@ -14,11 +14,9 @@ def test_detects_slot_selection() -> None:
     assert result.intent == "slot_selected"
 
 
-def test_detects_option_and_date_slot_selection() -> None:
+def test_detects_option_slot_selection() -> None:
     assert detect_intent("first option").intent == "slot_selected"
     assert detect_intent("option 2").intent == "slot_selected"
-    assert detect_intent("Saturday").intent == "slot_selected"
-    assert detect_intent("June 12").intent == "slot_selected"
 
 
 def test_detects_name() -> None:

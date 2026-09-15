@@ -1,5 +1,6 @@
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
 
 from app.config import get_settings
 from app.models import Appointment, Doctor, DoctorAvailability, Slot, User
@@ -42,8 +43,7 @@ class CalendarService:
         )
         service = build("calendar", "v3", credentials=credentials, cache_discovery=False)
         if isinstance(slot, DoctorAvailability):
-            start_time = datetime.combine(slot.available_date, slot.start_time, tzinfo=timezone.utc)
-            end_time = datetime.combine(slot.available_date, slot.end_time, tzinfo=timezone.utc)
+            start_time, end_time = self._next_availability_window(slot)
         else:
             start_time = slot.start_time
             end_time = slot.end_time
@@ -62,6 +62,20 @@ class CalendarService:
         }
         created = service.events().insert(calendarId=settings.google_calendar_id, body=event).execute()
         return CalendarResult(status="calendar_synced", event_id=created.get("id"), detail="Google Calendar event created.")
+
+    @staticmethod
+    def _next_availability_window(slot: DoctorAvailability) -> tuple[datetime, datetime]:
+        """Return the next local calendar occurrence for a recurring daily availability."""
+        local_timezone = ZoneInfo("Asia/Kolkata")
+        now = datetime.now(local_timezone)
+        start_time = datetime.combine(now.date(), slot.start_time, tzinfo=local_timezone)
+        end_time = datetime.combine(now.date(), slot.end_time, tzinfo=local_timezone)
+        if end_time <= start_time:
+            end_time += timedelta(days=1)
+        if start_time <= now:
+            start_time += timedelta(days=1)
+            end_time += timedelta(days=1)
+        return start_time, end_time
 
 
 calendar_service = CalendarService()

@@ -10,9 +10,8 @@ from app.database import engine, init_db
 from app.models import Doctor, DoctorAvailability, Slot
 from app.services import (
     DEFAULT_MAX_PATIENTS_PER_AVAILABILITY,
-    DEMO_AVAILABILITY_END_TIME,
-    DEMO_SLOT_DATES,
     DEMO_SLOT_TIMES,
+    demo_slot_end_time,
     reset_test_bookings,
     seed_demo_data,
 )
@@ -30,18 +29,16 @@ def main() -> None:
         doctors = session.exec(select(Doctor).where(Doctor.active == True).order_by(Doctor.id)).all()
         availability_count = 0
         for doctor in doctors:
-            for slot_date in DEMO_SLOT_DATES:
-                for slot_time in DEMO_SLOT_TIMES:
-                    session.add(
-                        DoctorAvailability(
-                            doctor_id=doctor.id,
-                            available_date=slot_date,
-                            start_time=slot_time,
-                            end_time=DEMO_AVAILABILITY_END_TIME,
-                            max_patients=DEFAULT_MAX_PATIENTS_PER_AVAILABILITY,
-                        )
+            for slot_time in DEMO_SLOT_TIMES:
+                session.add(
+                    DoctorAvailability(
+                        doctor_id=doctor.id,
+                        start_time=slot_time,
+                        end_time=demo_slot_end_time(slot_time),
+                        max_patients=DEFAULT_MAX_PATIENTS_PER_AVAILABILITY,
                     )
-                    availability_count += 1
+                )
+                availability_count += 1
 
         session.commit()
 
@@ -49,7 +46,7 @@ def main() -> None:
         "appointments=0, "
         f"availabilities_reset={availability_count}, "
         f"max_patients={DEFAULT_MAX_PATIENTS_PER_AVAILABILITY}, "
-        "dates=2026-06-10,2026-06-11,2026-06-12,2026-06-13"
+        "daily_time_windows_reset=true"
     )
 
 

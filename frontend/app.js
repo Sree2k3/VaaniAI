@@ -163,17 +163,15 @@ function formatSlotTime(startTime) {
 }
 
 function formatTimeOnly(value) {
+  if (/^\d{2}:\d{2}/.test(value)) {
+    const [hour, minute] = value.split(":").map(Number);
+    const suffix = hour >= 12 ? "PM" : "AM";
+    const displayHour = hour % 12 || 12;
+    return `${displayHour}:${String(minute).padStart(2, "0")} ${suffix}`;
+  }
   return new Date(value).toLocaleTimeString([], {
     hour: "numeric",
     minute: "2-digit",
-  });
-}
-
-function formatSlotDate(value) {
-  return new Date(value).toLocaleDateString([], {
-    weekday: "short",
-    month: "short",
-    day: "numeric",
   });
 }
 
@@ -208,9 +206,6 @@ function renderSlots(slotOptions = [], selectedSlot = null) {
     const spec = document.createElement("span");
     spec.textContent = slot.specialization.replace(/\b\w/g, (letter) => letter.toUpperCase());
 
-    const date = document.createElement("span");
-    date.textContent = formatSlotDate(slot.start_time);
-
     const time = document.createElement("span");
     time.textContent = formatSlotWindow(slot);
 
@@ -223,7 +218,7 @@ function renderSlots(slotOptions = [], selectedSlot = null) {
     const code = document.createElement("code");
     code.textContent = slot.fully_booked ? "Closed" : `Say: option ${String(slot.slot_id).padStart(2, "0")}`;
 
-    card.append(doctor, spec, date, time, capacity, code);
+    card.append(doctor, spec, time, capacity, code);
     els.slotCards.appendChild(card);
   });
 }
@@ -294,7 +289,7 @@ function renderSelectedSlot(slot) {
   specialty.textContent = slot.specialization.replace(/\b\w/g, (letter) => letter.toUpperCase());
 
   const time = document.createElement("span");
-  time.textContent = `${formatSlotDate(slot.start_time)} · ${formatSlotWindow(slot)}`;
+  time.textContent = formatSlotWindow(slot);
 
   const capacity = document.createElement("span");
   capacity.textContent = `Slots Available: ${slot.remaining_slots} / ${slot.max_patients}`;

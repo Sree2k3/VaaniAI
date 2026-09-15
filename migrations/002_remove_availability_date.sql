@@ -1,0 +1,29 @@
+-- Convert doctor availability from date-specific sessions to reusable daily time windows.
+-- Back up the database before applying this migration.
+--
+-- Existing appointments remain linked to their original availability IDs. If the old
+-- database contains several rows for the same doctor and start time, retain those
+-- rows during the migration, then consolidate them after historical appointments
+-- have been archived.
+
+-- MySQL 8+
+-- ALTER TABLE doctoravailability DROP INDEX uq_doctor_availability_time;
+-- ALTER TABLE doctoravailability DROP COLUMN available_date;
+-- ALTER TABLE doctoravailability ADD CONSTRAINT uq_doctor_availability_time UNIQUE (doctor_id, start_time);
+
+-- SQLite requires a table rebuild because available_date participates in a unique
+-- constraint. Run this in a maintenance window with foreign-key enforcement off,
+-- then rebuild dependent foreign keys if your SQLite version rewrites them on rename.
+-- CREATE TABLE doctoravailability_new (
+--     id INTEGER PRIMARY KEY,
+--     doctor_id INTEGER NOT NULL,
+--     start_time TIME NOT NULL,
+--     end_time TIME NOT NULL,
+--     max_patients INTEGER NOT NULL DEFAULT 50,
+--     FOREIGN KEY (doctor_id) REFERENCES doctor(id)
+-- );
+-- INSERT INTO doctoravailability_new (id, doctor_id, start_time, end_time, max_patients)
+-- SELECT id, doctor_id, start_time, end_time, max_patients FROM doctoravailability;
+-- DROP TABLE doctoravailability;
+-- ALTER TABLE doctoravailability_new RENAME TO doctoravailability;
+-- CREATE INDEX ix_doctoravailability_doctor_id ON doctoravailability (doctor_id);

@@ -241,7 +241,7 @@ def test_doctors_include_symptoms_column() -> None:
         app.dependency_overrides.clear()
 
 
-def test_demo_seed_creates_four_availability_sessions_per_doctor() -> None:
+def test_demo_seed_creates_four_daily_availability_sessions_per_doctor() -> None:
     use_in_memory_database()
     try:
         with TestClient(app) as client:
@@ -249,17 +249,17 @@ def test_demo_seed_creates_four_availability_sessions_per_doctor() -> None:
             slots = client.get("/available-slots").json()
 
         counts_by_doctor_id = {}
-        slot_dates = set()
+        slot_hours = set()
         for slot in slots:
             counts_by_doctor_id[slot["doctor_id"]] = counts_by_doctor_id.get(slot["doctor_id"], 0) + 1
-            slot_dates.add(slot["start_time"][:10])
+            slot_hours.add(slot["start_time"][:5])
             assert slot["max_patients"] == 50
             assert slot["remaining_slots"] == 50
             assert slot["fully_booked"] is False
 
         assert len(doctors) == 13
         assert all(counts_by_doctor_id[doctor["id"]] == 4 for doctor in doctors)
-        assert slot_dates == {"2026-06-10", "2026-06-11", "2026-06-12", "2026-06-13"}
+        assert slot_hours == {"10:00", "13:00", "16:00", "19:00"}
     finally:
         app.dependency_overrides.clear()
 

@@ -1,4 +1,4 @@
-from datetime import date, datetime
+from datetime import datetime, time
 from typing import Optional
 
 from pydantic import BaseModel
@@ -48,9 +48,8 @@ class SlotOption(BaseModel):
     availability_id: int
     doctor_name: str
     specialization: str
-    available_date: date
-    start_time: datetime
-    end_time: datetime
+    start_time: time
+    end_time: time
     max_patients: int
     booked_count: int
     remaining_slots: int
@@ -111,9 +110,8 @@ class SlotRead(BaseModel):
     doctor_id: int
     doctor_name: str
     specialization: str
-    available_date: date
-    start_time: datetime
-    end_time: datetime
+    start_time: time
+    end_time: time
     max_patients: int
     booked_count: int
     remaining_slots: int

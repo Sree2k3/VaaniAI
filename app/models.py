@@ -2,7 +2,7 @@ from datetime import datetime, timezone
 from enum import Enum
 from typing import Optional
 
-from datetime import date, time
+from datetime import time
 
 from sqlalchemy import Column, JSON, String, UniqueConstraint
 from sqlmodel import Field, SQLModel
@@ -77,11 +77,10 @@ class Slot(SQLModel, table=True):
 
 
 class DoctorAvailability(SQLModel, table=True):
-    __table_args__ = (UniqueConstraint("doctor_id", "available_date", "start_time", name="uq_doctor_availability_time"),)
+    __table_args__ = (UniqueConstraint("doctor_id", "start_time", name="uq_doctor_availability_time"),)
 
     id: Optional[int] = Field(default=None, primary_key=True)
     doctor_id: int = Field(foreign_key="doctor.id", index=True)
-    available_date: date = Field(index=True)
     start_time: time
     end_time: time
     max_patients: int = 50

@@ -96,11 +96,11 @@ def test_slot_hint_selects_requested_hour(monkeypatch) -> None:
 
     assert result.next_state == ConversationState.booked
     assert availability.start_time.hour == 10
-    assert availability.end_time.hour == 23
+    assert availability.end_time.hour == 11
     assert appointment.token_number == 1
 
 
-def test_availability_can_be_selected_by_option_date_or_time_window(monkeypatch) -> None:
+def test_availability_can_be_selected_by_option_or_time_window(monkeypatch) -> None:
     monkeypatch.setenv("SMS_PROVIDER", "stub")
     get_settings.cache_clear()
 
@@ -109,20 +109,14 @@ def test_availability_can_be_selected_by_option_date_or_time_window(monkeypatch)
     option_result = handle_chat(session_by_option, "call-option", "8111111111", "first option", "en")
     assert option_result.next_state == ConversationState.collect_name
     assert option_result.selected_slot is not None
-    assert option_result.selected_slot.available_date.isoformat() == "2026-06-10"
-
-    session_by_date = make_session()
-    handle_chat(session_by_date, "call-date", "8111111112", "I need an ENT specialist", "en")
-    date_result = handle_chat(session_by_date, "call-date", "8111111112", "June 12", "en")
-    assert date_result.next_state == ConversationState.collect_name
-    assert date_result.selected_slot is not None
-    assert date_result.selected_slot.available_date.isoformat() == "2026-06-12"
+    assert option_result.selected_slot.start_time.hour == 10
 
     session_by_time = make_session()
     handle_chat(session_by_time, "call-time", "8111111113", "I need an ENT specialist", "en")
-    time_result = handle_chat(session_by_time, "call-time", "8111111113", "3 pm", "en")
+    time_result = handle_chat(session_by_time, "call-time", "8111111113", "4 pm", "en")
     assert time_result.next_state == ConversationState.collect_name
     assert time_result.selected_slot is not None
+    assert time_result.selected_slot.start_time.hour == 16
 
 
 def test_availability_tokens_increment_and_capacity_blocks(monkeypatch) -> None:

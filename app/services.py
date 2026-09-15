@@ -214,16 +214,17 @@ DEMO_DOCTOR_CATALOG = [
 
 DEMO_SLOT_TIMES = [
     time(10, 0),
+    time(13, 0),
+    time(16, 0),
+    time(19, 0),
 ]
 DEMO_AVAILABILITY_END_TIME = time(23, 0)
-DEMO_SLOT_DATES = [
-    date(2026, 6, 10),
-    date(2026, 6, 11),
-    date(2026, 6, 12),
-    date(2026, 6, 13),
-]
 DEFAULT_MAX_PATIENTS_PER_AVAILABILITY = 50
 SLOT_OPTIONS_LIMIT = 20
+
+
+def demo_slot_end_time(start_time: time) -> time:
+    return time((start_time.hour + 1) % 24, start_time.minute)
 
 
 def get_or_create_user(session: Session, phone: str, language: str) -> User:
@@ -265,11 +266,11 @@ def list_doctors(session: Session) -> list[Doctor]:
 
 
 def availability_start_datetime(availability: DoctorAvailability) -> datetime:
-    return datetime.combine(availability.available_date, availability.start_time, tzinfo=timezone.utc)
+    return datetime.combine(datetime.now(timezone.utc).date(), availability.start_time, tzinfo=timezone.utc)
 
 
 def availability_end_datetime(availability: DoctorAvailability) -> datetime:
-    return datetime.combine(availability.available_date, availability.end_time, tzinfo=timezone.utc)
+    return datetime.combine(datetime.now(timezone.utc).date(), availability.end_time, tzinfo=timezone.utc)
 
 
 def count_availability_bookings(session: Session, availability_id: int) -> int:
@@ -296,7 +297,7 @@ def list_available_slots(session: Session, specialization: str | None = None) ->
         select(DoctorAvailability, Doctor)
         .join(Doctor, DoctorAvailability.doctor_id == Doctor.id)
         .where(Doctor.active == True)
-        .order_by(DoctorAvailability.available_date, DoctorAvailability.start_time, Doctor.name)
+        .order_by(DoctorAvailability.start_time, Doctor.name)
     )
     if specialization:
         statement = statement.where(Doctor.specialization == specialization)
@@ -305,9 +306,6 @@ def list_available_slots(session: Session, specialization: str | None = None) ->
     output: list[SlotRead] = []
     for availability, doctor in rows:
         if availability.id is None:
-            continue
-        start_at = availability_start_datetime(availability)
-        if start_at <= datetime.now(timezone.utc):
             continue
         booked_count = count_availability_bookings(session, availability.id)
         remaining_slots = max(availability.max_patients - booked_count, 0)
@@ -318,9 +316,8 @@ def list_available_slots(session: Session, specialization: str | None = None) ->
                 doctor_id=doctor.id,
                 doctor_name=doctor.name,
                 specialization=doctor.specialization,
-                available_date=availability.available_date,
-                start_time=start_at,
-                end_time=availability_end_datetime(availability),
+                start_time=availability.start_time,
+                end_time=availability.end_time,
                 max_patients=availability.max_patients,
                 booked_count=booked_count,
                 remaining_slots=remaining_slots,
@@ -1047,13 +1044,10 @@ def choose_available_slot(
                 return session.get(DoctorAvailability, option.availability_id)
 
     target_hour = parse_requested_hour(slot_hint)
-    target_date = parse_requested_date(slot_hint)
-    if slot_id is None and target_hour is None and target_date is None:
+    if slot_id is None and target_hour is None:
         return None
     for option in options:
         if target_hour is not None and not (option.start_time.hour <= target_hour < option.end_time.hour):
-            continue
-        if target_date is not None and option.available_date != target_date:
             continue
         return session.get(DoctorAvailability, option.availability_id)
     return None
@@ -1062,12 +1056,6 @@ def choose_available_slot(
 def parse_requested_hour(slot_hint: str) -> int | None:
     lowered = slot_hint.lower()
     has_explicit_time_marker = bool(re.search(r"\b(am|pm|baje)\b|:", lowered))
-    has_date_marker = bool(
-        re.search(r"\b(?:june|jun)\s*\d{1,2}(?:st|nd|rd|th)?\b", lowered)
-        or re.search(r"\b\d{1,2}(?:st|nd|rd|th)?\s*(?:june|jun)\b", lowered)
-    )
-    if has_date_marker and not has_explicit_time_marker:
-        return None
     match = re.search(r"\b(\d{1,2})(?::\d{2})?\s*(am|pm)?\b", lowered)
     if not match:
         return None
@@ -1104,44 +1092,6 @@ def parse_requested_slot_id(slot_hint: str) -> int | None:
     for word, value in words.items():
         if re.search(rf"\b{re.escape(word)}\b", lowered):
             return value
-    return None
-
-
-def parse_requested_date(slot_hint: str):
-    lowered = slot_hint.lower()
-    today = datetime.now(timezone.utc).date()
-    if "tomorrow" in lowered or "kal" in lowered:
-        return today + timedelta(days=1)
-    if "today" in lowered or "aaj" in lowered:
-        return today
-    weekday_map = {
-        "wednesday": date(2026, 6, 10),
-        "wed": date(2026, 6, 10),
-        "thursday": date(2026, 6, 11),
-        "thu": date(2026, 6, 11),
-        "friday": date(2026, 6, 12),
-        "fri": date(2026, 6, 12),
-        "saturday": date(2026, 6, 13),
-        "sat": date(2026, 6, 13),
-    }
-    for word, value in weekday_map.items():
-        if re.search(rf"\b{word}\b", lowered):
-            return value
-    explicit_dates = {
-        10: date(2026, 6, 10),
-        11: date(2026, 6, 11),
-        12: date(2026, 6, 12),
-        13: date(2026, 6, 13),
-    }
-    month_date = re.search(r"\b(?:june|jun)\s*(\d{1,2})(?:st|nd|rd|th)?\b", lowered)
-    if month_date:
-        return explicit_dates.get(int(month_date.group(1)))
-    date_month = re.search(r"\b(\d{1,2})(?:st|nd|rd|th)?\s*(?:june|jun)\b", lowered)
-    if date_month:
-        return explicit_dates.get(int(date_month.group(1)))
-    bare_day = re.search(r"\b(10|11|12|13)(?:st|nd|rd|th)?\b", lowered)
-    if bare_day and any(word in lowered for word in ["date", "june", "jun", "tarikh", "tareekh"]):
-        return explicit_dates.get(int(bare_day.group(1)))
     return None
 
 
@@ -1297,7 +1247,6 @@ def build_slot_options(slots: list[SlotRead]) -> list[SlotOption]:
                 availability_id=slot.availability_id,
                 doctor_name=slot.doctor_name,
                 specialization=slot.specialization,
-                available_date=slot.available_date,
                 start_time=slot.start_time,
                 end_time=slot.end_time,
                 max_patients=slot.max_patients,
@@ -1306,7 +1255,7 @@ def build_slot_options(slots: list[SlotRead]) -> list[SlotOption]:
                 fully_booked=slot.fully_booked,
                 label=(
                     f"Option {index:02d}: {slot.doctor_name} ({slot.specialization}) "
-                    f"on {format_time_range(slot.start_time, slot.end_time)}. "
+                    f"at {format_time_range(slot.start_time, slot.end_time)}. "
                     f"Slots available: {slot.remaining_slots}/{slot.max_patients}."
                 ),
             )
@@ -1335,15 +1284,14 @@ def build_selected_slot_option(session: Session, call: CallLog) -> SlotOption | 
         availability_id=availability.id,
         doctor_name=doctor.name,
         specialization=doctor.specialization,
-        available_date=availability.available_date,
-        start_time=availability_start_datetime(availability),
-        end_time=availability_end_datetime(availability),
+        start_time=availability.start_time,
+        end_time=availability.end_time,
         max_patients=availability.max_patients,
         booked_count=booked_count,
         remaining_slots=remaining_slots,
         fully_booked=remaining_slots <= 0,
         label=(
-            f"{doctor.name} ({doctor.specialization}) on "
+            f"{doctor.name} ({doctor.specialization}) at "
             f"{format_availability(availability)}. Slots available: {remaining_slots}/{availability.max_patients}."
         ),
     )
@@ -1480,11 +1428,10 @@ def format_slot(value: datetime) -> str:
     return value.strftime("%A %I:%M %p").replace(" 0", " ")
 
 
-def format_time_range(start_value: datetime, end_value: datetime) -> str:
-    date_text = start_value.strftime("%a, %b %d").replace(" 0", " ")
+def format_time_range(start_value: datetime | time, end_value: datetime | time) -> str:
     start_text = start_value.strftime("%I:%M %p").replace(" 0", " ")
     end_text = end_value.strftime("%I:%M %p").replace(" 0", " ")
-    return f"{date_text}, {start_text} - {end_text}"
+    return f"{start_text} - {end_text}"
 
 
 def format_availability(availability: DoctorAvailability) -> str:
@@ -1511,27 +1458,24 @@ def seed_demo_data(session: Session) -> None:
 
     availabilities: list[DoctorAvailability] = []
     for doctor in doctors:
-        for slot_date in DEMO_SLOT_DATES:
-            for slot_time in DEMO_SLOT_TIMES:
-                existing_availability = session.exec(
-                    select(DoctorAvailability).where(
-                        and_(
-                            DoctorAvailability.doctor_id == doctor.id,
-                            DoctorAvailability.available_date == slot_date,
-                            DoctorAvailability.start_time == slot_time,
-                        )
+        for slot_time in DEMO_SLOT_TIMES:
+            existing_availability = session.exec(
+                select(DoctorAvailability).where(
+                    and_(
+                        DoctorAvailability.doctor_id == doctor.id,
+                        DoctorAvailability.start_time == slot_time,
                     )
-                ).first()
-                if not existing_availability:
-                    availabilities.append(
-                        DoctorAvailability(
-                            doctor_id=doctor.id,
-                            available_date=slot_date,
-                            start_time=slot_time,
-                            end_time=DEMO_AVAILABILITY_END_TIME,
-                            max_patients=DEFAULT_MAX_PATIENTS_PER_AVAILABILITY,
-                        )
+                )
+            ).first()
+            if not existing_availability:
+                availabilities.append(
+                    DoctorAvailability(
+                        doctor_id=doctor.id,
+                        start_time=slot_time,
+                        end_time=demo_slot_end_time(slot_time),
+                        max_patients=DEFAULT_MAX_PATIENTS_PER_AVAILABILITY,
                     )
+                )
     if availabilities:
         session.add_all(availabilities)
         session.commit()
@@ -1643,13 +1587,11 @@ def seed_demo_operational_data(session: Session, doctors: list[Doctor]) -> None:
                 session.add(Transcript(call_id=call.id, speaker=speaker, text=text_value, language=language))
             session.commit()
 
-        available_date = now.date() + timedelta(days=spec["slot_day_offset"])
         start_time = time(spec["slot_hour"], 0)
         availability = session.exec(
             select(DoctorAvailability).where(
                 and_(
                     DoctorAvailability.doctor_id == doctor.id,
-                    DoctorAvailability.available_date == available_date,
                     DoctorAvailability.start_time == start_time,
                 )
             )
@@ -1657,7 +1599,6 @@ def seed_demo_operational_data(session: Session, doctors: list[Doctor]) -> None:
         if not availability:
             availability = DoctorAvailability(
                 doctor_id=doctor.id,
-                available_date=available_date,
                 start_time=start_time,
                 end_time=DEMO_AVAILABILITY_END_TIME,
                 max_patients=DEFAULT_MAX_PATIENTS_PER_AVAILABILITY,

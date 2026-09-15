@@ -318,20 +318,13 @@ def looks_like_slot(lowered: str) -> bool:
         "sunday",
         "monday",
         "tuesday",
-        "june",
-        "jun",
-        "date",
-        "tarikh",
-        "tareekh",
     }
     tokens = set(tokenize_words(lowered))
     if any(word in tokens for word in slot_words):
         return True
     if re.search(r"\b\d{1,2}(?::\d{2})?\s*(am|pm)\b", lowered):
         return True
-    if re.search(r"\b(slot|option|june|jun|date|tarikh|tareekh)\s*\d{1,2}\b", lowered):
-        return True
-    if re.search(r"\b\d{1,2}(st|nd|rd|th)?\s*(june|jun)\b", lowered):
+    if re.search(r"\b(slot|option)\s*\d{1,2}\b", lowered):
         return True
     time_words = ["am", "pm", "baje", "morning", "evening", "tomorrow", "kal", "today", "aaj", "बजे", "कल", "आज"]
     tokens = set(tokenize_words(lowered))

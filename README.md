@@ -271,17 +271,18 @@ The app includes startup migration logic for the current MVP schema, including d
 VaaniAI now uses doctor availability sessions instead of exposing raw database slot IDs.
 
 - `doctor` stores doctor profile and specialty data.
-- `doctoravailability` stores when a doctor sits: `doctor_id`, `available_date`, `start_time`, `end_time`, and `max_patients`.
+- `doctoravailability` stores reusable daily time windows: `doctor_id`, `start_time`, `end_time`, and `max_patients`.
 - `appointment` stores the selected `availability_id` and assigned `token_number`.
-- The UI shows availability cards with doctor name, specialty, date, time range, and remaining capacity.
+- The UI shows availability cards with doctor name, specialty, time range, and remaining capacity.
 - Patients choose visible options such as `Option 01`; the backend maps that to the correct availability row.
-- Demo data shows exactly four options per matched doctor: June 10, 11, 12, and 13 from 10:00 AM to 11:00 PM.
+- Demo data shows four daily time-window options per matched doctor: 10:00 AM, 1:00 PM, 4:00 PM, and 7:00 PM.
 - Booking assigns the next token number, for example `01`, `02`, `03`, and blocks once `max_patients` is reached.
 
 SQL migration script:
 
 ```text
 migrations/001_doctor_availability_tokens.sql
+migrations/002_remove_availability_date.sql
 ```
 
 Reset local demo availability data:
